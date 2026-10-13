@@ -1,0 +1,103 @@
+name: Build Barpi Monitor (Windows exe)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "monitor/**"
+      - ".github/workflows/build-monitor.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: monitor/requirements.txt
+
+      - name: Install Python dependencies
+        run: python -m pip install -r monitor/requirements.txt
+
+      - name: Fetch libmpv (Windows x64 build)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          New-Item -ItemType Directory -Force monitor/vendor | Out-Null
+          $url = $null; $name = $null
+          foreach ($repo in @("zhongfly/mpv-winbuild", "shinchiro/mpv-winbuild-cmake")) {
+            try {
+              $rel = gh api "repos/$repo/releases/latest" | ConvertFrom-Json
+              $assets = @($rel.assets | Where-Object { $_.name -like '*.7z' })
+              $asset = $assets | Where-Object { $_.name -match '^mpv-dev-x86_64-\d' -and $_.name -notmatch 'v3' } | Select-Object -First 1
+              if (-not $asset) { $asset = $assets | Where-Object { $_.name -match '^mpv-dev-x86_64' -and $_.name -notmatch 'v3' } | Select-Object -First 1 }
+              if ($asset) { $url = $asset.browser_download_url; $name = $asset.name; Write-Host "Using $repo $($rel.tag_name): $name"; break }
+              Write-Host "No matching asset in $repo. Assets:"; $rel.assets | ForEach-Object { Write-Host "  $($_.name)" }
+            } catch { Write-Warning "$repo failed: $_" }
+          }
+          if (-not $url) { throw "No libmpv build found" }
+          Invoke-WebRequest $url -OutFile monitor/vendor/mpv-dev.7z
+          7z e monitor/vendor/mpv-dev.7z libmpv-2.dll -omonitor/vendor -y | Out-Null
+          if (-not (Test-Path monitor/vendor/libmpv-2.dll)) { 7z l monitor/vendor/mpv-dev.7z; throw "libmpv-2.dll not in archive" }
+          Set-Content monitor/vendor/LIBMPV-VERSION.txt "$name"
+          Remove-Item monitor/vendor/mpv-dev.7z
+          Get-Item monitor/vendor/libmpv-2.dll | Select-Object Name, Length
+
+      - name: Unit tests
+        run: python -m pytest monitor/tests -q
+
+      - name: Build the exe
+        run: pyinstaller monitor/BarpiMonitor.spec --noconfirm --clean --distpath monitor/dist --workpath monitor/build
+
+      - name: Self-test the built exe
+        run: |
+          $cfg = Join-Path $env:RUNNER_TEMP "bm\config.json"
+          $p = Start-Process -FilePath (Resolve-Path monitor/dist/BarpiMonitor.exe) -ArgumentList @("--self-test", "--config", "`"$cfg`"") -Wait -PassThru
+          $log = Join-Path (Split-Path $cfg) "self-test.log"
+          if (Test-Path $log) { Get-Content $log } else { Write-Host "no self-test log written" }
+          if ($p.ExitCode -ne 0) { throw "self-test exit code $($p.ExitCode)" }
+
+      - name: Package
+        id: package
+        run: |
+          $version = python -c "import sys; sys.path.insert(0,'monitor'); import barpi_monitor; print(barpi_monitor.__version__)"
+          $stage = "monitor/dist/BarpiMonitor-$version-win64"
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          Copy-Item monitor/dist/BarpiMonitor.exe $stage/
+          Copy-Item monitor/README-WINDOWS.txt $stage/README.txt
+          Copy-Item monitor/vendor/LIBMPV-VERSION.txt $stage/
+          Compress-Archive -Path "$stage/*" -DestinationPath "$stage.zip" -Force
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "zip=$stage.zip" >> $env:GITHUB_OUTPUT
+          Get-Item monitor/dist/BarpiMonitor.exe, "$stage.zip" | Select-Object Name, Length
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BarpiMonitor-${{ steps.package.outputs.version }}-win64
+          path: |
+            monitor/dist/BarpiMonitor.exe
+            ${{ steps.package.outputs.zip }}
+          if-no-files-found: error
+
+      - name: Publish as the "monitor-latest" release
+        if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $v = "${{ steps.package.outputs.version }}"
+          $notes = "Barpi Monitor $v, built from ${{ github.sha }} (branch ${{ github.ref_name }}).`n`n" +
+                   "Download BarpiMonitor.exe (or the zip, which includes a README). libmpv: $(Get-Content monitor/vendor/LIBMPV-VERSION.txt)`n`n" +
+                   "Windows SmartScreen may warn because the exe is not code-signed: choose More info > Run anyway."
+          gh release delete monitor-latest --cleanup-tag --yes 2>$null
+          gh release create monitor-latest --target ${{ github.sha }} --prerelease --title "Barpi Monitor $v (latest build)" --notes "$notes" monitor/dist/BarpiMonitor.exe "${{ steps.package.outputs.zip }}"
+          Write-Host "Published: https://github.com/${{ github.repository }}/releases/tag/monitor-latest"
