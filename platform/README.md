@@ -49,7 +49,7 @@ answer JSON instead of redirecting. All need the session cookie from `POST /api/
 | `POST /api/admin/licenses` | `productId` or `product` (slug); `customerId`, or `customerName` (+ `customerEmail`) to create the customer; `label` (a reference such as site or invoice), `maxSeats`, `expiresAt (YYYY-MM-DD)`, `notes` |
 | `POST /api/admin/licenses/:id` | `action = update \| extend \| offline \| lock \| unlock \| revoke \| reinstate \| delete`, `message`; update: `customerId, productId, label, maxSeats, expiresAt, notes`; extend: `months` (1/3/6/12) or `until`, `back`; offline: `machineId, hostname, expiresAt` (answers the `.lic` file, or JSON with `content`) |
 | `GET /api/admin/systems/:id/file` | the current offline file of a computer (re-signed from the licence as it is now) |
-| `PUT /api/admin/products/:id/releases` | upload a build: raw body + headers `x-filename`, `x-version`, `x-notes` (URL-encoded) |
+| `PUT /api/admin/products/:id/releases` | upload a build: raw body + headers `x-filename`, `x-version`, `x-notes` (URL-encoded) and `x-size`; outside the proxy layer (which caps bodies at 10 MB), so it verifies the session cookie itself |
 | `POST /api/admin/releases/:id` | `action = delete` |
 | `GET /download/:slug` · `GET /download/:slug/:release` | **public**: the latest build of a software, or one specific build |
 | `POST /api/admin/systems/:id` | `action = lock \| unlock \| remove`, `message` |

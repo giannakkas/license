@@ -32,5 +32,8 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|svg|webp|ico)$).*)"],
+  // The build upload (PUT …/releases) is left out: a request that passes through the proxy has
+  // its body buffered and cut at experimental.proxyClientMaxBodySize (10 MB), while the route
+  // handler streams any size to disk. That route checks the admin session itself.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/admin/products/[^/]+/releases$|.*\\.(?:png|jpg|jpeg|svg|webp|ico)$).*)"],
 };

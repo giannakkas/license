@@ -23,6 +23,7 @@ export function ReleaseUpload({ productId }: { productId: string }) {
     xhr.setRequestHeader("x-filename", encodeURIComponent(file.name));
     xhr.setRequestHeader("x-version", encodeURIComponent(version.trim()));
     xhr.setRequestHeader("x-notes", encodeURIComponent(notes.trim()));
+    xhr.setRequestHeader("x-size", String(file.size));
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) setProgress(Math.round((e.loaded / e.total) * 100));
     };
