@@ -5,6 +5,7 @@ const COLORS: Record<string, string> = {
   revoked: "bg-[#3a1416] text-[#fca5a5] border-[#7a2323]",
   expired: "bg-[#3a2a10] text-[#fcd34d] border-[#7a5a1a]",
   offline: "bg-[#1e222b] text-[#8b93a3] border-[#2a2f3a]",
+  file: "bg-[#172554] text-[#93c5fd] border-[#1e3a8a]",
 };
 
 export function Badge({ status, label }: { status: string; label?: string }) {

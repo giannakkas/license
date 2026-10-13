@@ -50,6 +50,16 @@ activation dialog. While not allowed to run, the window shows a lock screen and 
 is stopped. If the platform is unreachable the last answer holds for 72 hours.
 `--license-server URL` (or `BARPI_LICENSE_SERVER`) points a build at another platform.
 
+Computers without internet import an *offline licence file* (`.lic`) instead of a key: the
+platform signs a payload (key, software slug, customer, computer id, expiry) with its RSA-2048
+key and the program verifies it with the public modulus in `license.py` (`PUBLIC_KEY_N`,
+pure-Python RSASSA-PKCS1-v1_5/SHA-256, no extra dependency). An imported file puts the client
+in `offline` mode: no grace rule, valid until the file's expiry, and the file's signature
+serves as the check-in token so a computer that does get a connection can still be locked
+from the platform. A clock set back more than an hour before the last run locks the program
+until the clock is right (`clock_mark` in `license.json`). Rotating the platform key means
+re-issuing every offline file and rebuilding the exe with the new modulus.
+
 ## How the alarms work
 
 Audio alarms come from the same per-frame peak, RMS and loudness figures as the meters

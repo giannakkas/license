@@ -12,7 +12,8 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
   const products = await prisma.product.findMany({
     orderBy: { name: "asc" },
     include: {
-      licenses: { select: { status: true, expiresAt: true, customerId: true, systems: { select: { status: true, lastSeenAt: true } } } },
+      licenses: { select: { status: true, expiresAt: true, customerId: true, systems: { select: { status: true, lastSeenAt: true, mode: true } } } },
+      releases: { orderBy: { createdAt: "desc" }, take: 1, select: { version: true } },
     },
   });
 
@@ -29,7 +30,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
         ) : (
           <table>
             <thead>
-              <tr><th>Software</th><th>Slug</th><th>Customers</th><th>Licences</th><th>Computers</th><th>Last seen</th><th></th></tr>
+              <tr><th>Software</th><th>Slug</th><th>Latest build</th><th>Customers</th><th>Licences</th><th>Computers</th><th>Last seen</th><th></th></tr>
             </thead>
             <tbody>
               {products.map((p) => {
@@ -43,6 +44,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
                       {p.notes && <div className="muted text-xs">{p.notes}</div>}
                     </td>
                     <td className="mono text-xs">{p.slug}</td>
+                    <td>{p.releases[0] ? <a href={`/download/${p.slug}`} className="text-[#93c5fd] hover:underline">{p.releases[0].version}</a> : <span className="muted">—</span>}</td>
                     <td>{customers}</td>
                     <td>
                       {s.licences}

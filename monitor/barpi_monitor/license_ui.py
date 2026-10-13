@@ -6,11 +6,12 @@ import time
 
 from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from PySide6.QtGui import QFont
-from PySide6.QtWidgets import (QApplication, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
-                               QPushButton, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QApplication, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QFrame, QHBoxLayout,
+                               QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget)
 
 from . import APP_NAME, theme
-from .license import NEEDS_ACTIVATION, LicenseClient, LicenseError, ServerUnreachable, Status, normalise_key
+from .license import (MODE_OFFLINE, NEEDS_ACTIVATION, LicenseClient, LicenseError, ServerUnreachable, Status,
+                      normalise_key)
 
 LOCK_TITLES = {
     Status.LOCKED: "This system is locked",
@@ -18,8 +19,24 @@ LOCK_TITLES = {
     Status.EXPIRED: "Licence expired",
     Status.UNKNOWN: "Activation needed",
     Status.OFFLINE: "Licence server unreachable",
-    Status.UNLICENSED: "No licence key",
+    Status.CLOCK: "Clock set back",
+    Status.UNLICENSED: "No licence",
 }
+
+FILE_FILTER = "Licence files (*.lic);;All files (*)"
+
+
+def import_license_file(client: LicenseClient, parent=None) -> tuple[bool, str]:
+    """Ask for a .lic file and import it. Returns (imported, message)."""
+    path, _ = QFileDialog.getOpenFileName(parent, "Import licence file", "", FILE_FILTER)
+    if not path:
+        return False, ""
+    try:
+        state = client.import_file(path)
+    except LicenseError as exc:
+        return False, exc.message
+    who = f" for {state.label}" if state.label else ""
+    return True, f"Licence file imported{who}; valid until {state.file_expires_at[:10]}."
 
 
 def _mask(key: str) -> str:
@@ -47,9 +64,27 @@ class ActivationDialog(QDialog):
         self.status = QLabel(message)
         self.status.setWordWrap(True)
         self.status.setStyleSheet(f"color: {theme.AMBER};")
-        machine = QLabel(f"Computer ID: {client.state.machine_id}")
-        machine.setStyleSheet(f"color: {theme.MUTED}; font-size: 10px;")
+
+        line = QFrame()
+        line.setFrameShape(QFrame.HLine)
+        line.setStyleSheet(f"color: {theme.BORDER};")
+        offline = QLabel("No internet on this computer? Send the computer ID below to your supplier and import "
+                         "the licence file you receive. The file works on this computer only, until its expiry date.")
+        offline.setWordWrap(True)
+        offline.setStyleSheet(f"color: {theme.MUTED};")
+        machine = QLabel(f"Computer ID: <b>{client.state.machine_id}</b>")
+        machine.setStyleSheet(f"color: {theme.TEXT};")
         machine.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        copy_btn = QPushButton("Copy ID")
+        copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(client.state.machine_id))
+        import_btn = QPushButton("Import licence file…")
+        import_btn.clicked.connect(self._import)
+        id_row = QHBoxLayout()
+        id_row.addWidget(machine)
+        id_row.addWidget(copy_btn)
+        id_row.addStretch(1)
+        id_row.addWidget(import_btn)
+
         buttons = QDialogButtonBox()
         self.activate_btn = buttons.addButton("Activate", QDialogButtonBox.AcceptRole)
         self.activate_btn.setDefault(True)
@@ -60,7 +95,11 @@ class ActivationDialog(QDialog):
         layout.addWidget(intro)
         layout.addWidget(self.key_edit)
         layout.addWidget(self.status)
-        layout.addWidget(machine)
+        layout.addSpacing(6)
+        layout.addWidget(line)
+        layout.addWidget(offline)
+        layout.addLayout(id_row)
+        layout.addSpacing(6)
         layout.addWidget(buttons)
         if client.state.key:
             self.key_edit.setText(client.state.key)
@@ -94,6 +133,15 @@ class ActivationDialog(QDialog):
         self.status.setText(f"Activated{(' for ' + state.label) if state.label else ''}.")
         self.accept()
 
+    def _import(self) -> None:
+        ok, message = import_license_file(self.client, parent=self)
+        if ok:
+            self.status.setStyleSheet(f"color: {theme.GREEN};")
+            self.status.setText(message)
+            self.accept()
+        elif message:
+            self._fail(message)
+
     def _fail(self, message: str) -> None:
         self.status.setStyleSheet(f"color: {theme.RED};")
         self.status.setText(message)
@@ -109,10 +157,11 @@ class LicenseDialog(QDialog):
         self.setWindowTitle("Licence")
         self.setMinimumWidth(520)
         self.form = QFormLayout()
-        self.labels = {name: QLabel() for name in ("status", "label", "key", "machine", "server", "last", "expires")}
+        self.labels = {name: QLabel() for name in ("status", "mode", "label", "key", "machine", "server", "last", "expires")}
         for lab in self.labels.values():
             lab.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.form.addRow("Status", self.labels["status"])
+        self.form.addRow("Mode", self.labels["mode"])
         self.form.addRow("Licensed to", self.labels["label"])
         self.form.addRow("Key", self.labels["key"])
         self.form.addRow("Computer ID", self.labels["machine"])
@@ -124,12 +173,14 @@ class LicenseDialog(QDialog):
         check.clicked.connect(self._check_now)
         change = QPushButton("Change key…")
         change.clicked.connect(self._change_key)
+        import_btn = QPushButton("Import licence file…")
+        import_btn.clicked.connect(self._import)
         deactivate = QPushButton("Deactivate this computer")
         deactivate.clicked.connect(self._deactivate)
         close = QPushButton("Close")
         close.setDefault(True)
         close.clicked.connect(self.accept)
-        for b in (check, change, deactivate):
+        for b in (check, change, import_btn, deactivate):
             row.addWidget(b)
         row.addStretch(1)
         row.addWidget(close)
@@ -144,6 +195,11 @@ class LicenseDialog(QDialog):
         color = theme.GREEN if status == Status.ACTIVE else theme.RED
         self.labels["status"].setText(f'<span style="color:{color}; font-weight:bold">{status.upper()}</span>'
                                       + (f" — {message}" if message else ""))
+        if st.mode == MODE_OFFLINE:
+            self.labels["mode"].setText(f"Offline licence file, valid until {st.file_expires_at[:10] or '?'}"
+                                        f" (issued {st.file_issued_at[:10] or '?'})")
+        else:
+            self.labels["mode"].setText("Online: key checked with the platform")
         self.labels["label"].setText(st.label or "—")
         self.labels["key"].setText(_mask(st.key) if st.key else "—")
         self.labels["machine"].setText(st.machine_id)
@@ -171,6 +227,16 @@ class LicenseDialog(QDialog):
             self.monitor.publish()
         self._refresh()
 
+    def _import(self) -> None:
+        ok, message = import_license_file(self.client, parent=self)
+        if message:
+            color = theme.GREEN if ok else theme.RED
+            self.labels["status"].setText(f'<span style="color:{color}">{message}</span>')
+        if ok:
+            if self.monitor is not None:
+                self.monitor.publish()
+            self._refresh()
+
     def _deactivate(self) -> None:
         self.client.deactivate()
         if self.monitor is not None:
@@ -183,6 +249,7 @@ class LockScreen(QWidget):
 
     check_again = Signal()
     enter_key = Signal()
+    import_file = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -206,10 +273,13 @@ class LockScreen(QWidget):
         self.check_btn.clicked.connect(self.check_again.emit)
         self.key_btn = QPushButton("Enter a licence key…")
         self.key_btn.clicked.connect(self.enter_key.emit)
+        self.file_btn = QPushButton("Import licence file…")
+        self.file_btn.clicked.connect(self.import_file.emit)
         row = QHBoxLayout()
         row.addStretch(1)
         row.addWidget(self.check_btn)
         row.addWidget(self.key_btn)
+        row.addWidget(self.file_btn)
         row.addStretch(1)
         layout = QVBoxLayout(self)
         layout.addStretch(2)
@@ -260,6 +330,7 @@ class LicenseMonitor(QObject):
 
     def publish(self) -> None:
         """Emit the current effective status if it differs from the last one announced."""
+        self.client.tick()
         current = self.client.effective_status()
         if current != self._last:
             self._last = current

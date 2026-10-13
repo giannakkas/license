@@ -18,8 +18,26 @@ model Product {
   updatedAt DateTime @updatedAt
 
   licenses License[]
+  releases Release[]
 
   @@map("products")
+}
+
+/// A downloadable build of a software (the exe or installer), kept on the downloads volume.
+model Release {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  version   String
+  filename  String
+  size      Int
+  sha256    String
+  notes     String?
+  downloads Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([productId, createdAt(sort: Desc)])
+  @@map("releases")
 }
 
 /// Who a licence is issued to: a company, studio or person. One customer can hold licences
@@ -81,6 +99,9 @@ model System {
   status      String   @default("active")
   lockMessage String?
   tokenHash   String
+  /// online (activated with the key, checks in) | offline (holds a signed licence file)
+  mode             String    @default("online")
+  offlineExpiresAt DateTime?
   firstSeenAt DateTime @default(now())
   lastSeenAt  DateTime @default(now())
 
@@ -95,7 +116,7 @@ model Event {
   licenseId String?
   license   License? @relation(fields: [licenseId], references: [id], onDelete: SetNull)
   systemId  String?
-  /// created | updated | activated | deactivated | locked | unlocked | revoked | removed | refused | deleted | customer | software
+  /// created | updated | extended | activated | deactivated | locked | unlocked | revoked | removed | refused | deleted | customer | software | file | release
   kind      String
   detail    String?
   ip        String?

@@ -22,6 +22,9 @@ Tailwind 4), one admin password, HMAC-signed session cookie.
    or `revoked` / `expired` / `unknown`, after which the program asks for a key again.
 3. If the platform cannot be reached the program keeps running on its last answer for
    72 hours, then locks itself until it can check in.
+4. A computer with **no internet** gets an *offline licence file* instead (see below): the
+   program imports it and runs until the file's expiry without any server. If that computer
+   does get a connection it checks in like the others, so a lock or revoke still reaches it.
 
 Computer ids are a hash of the Windows machine id and host name, not personal data.
 
@@ -32,6 +35,7 @@ Computer ids are a hash of the Windows machine id and host name, not personal da
 | `POST /api/v1/activate` | `key, machine_id, hostname, os, version, product` | 200 `active`/`locked` + `token`; 403 `locked`/`revoked`/`expired`/`no_seats`; 404 `invalid` |
 | `POST /api/v1/heartbeat` | `key, machine_id, token, version, hostname` | 200 `active`/`locked`; 403 `revoked`/`expired`; 404/401 `unknown` |
 | `POST /api/v1/deactivate` | `key, machine_id, token` | 200 `ok` |
+| `GET /api/v1/public-key` | — | the RSA public key programs embed to verify offline files (`n`, `e`, `pem`) |
 
 Every answer carries `status`, `message` and `interval` (seconds until the next check-in).
 
@@ -43,7 +47,11 @@ answer JSON instead of redirecting. All need the session cookie from `POST /api/
 | Endpoint | Fields |
 | --- | --- |
 | `POST /api/admin/licenses` | `productId` or `product` (slug); `customerId`, or `customerName` (+ `customerEmail`) to create the customer; `label` (a reference such as site or invoice), `maxSeats`, `expiresAt (YYYY-MM-DD)`, `notes` |
-| `POST /api/admin/licenses/:id` | `action = update \| lock \| unlock \| revoke \| reinstate \| delete`, `message`, and for update: `customerId, productId, label, maxSeats, expiresAt, notes` |
+| `POST /api/admin/licenses/:id` | `action = update \| extend \| offline \| lock \| unlock \| revoke \| reinstate \| delete`, `message`; update: `customerId, productId, label, maxSeats, expiresAt, notes`; extend: `months` (1/3/6/12) or `until`, `back`; offline: `machineId, hostname, expiresAt` (answers the `.lic` file, or JSON with `content`) |
+| `GET /api/admin/systems/:id/file` | the current offline file of a computer (re-signed from the licence as it is now) |
+| `PUT /api/admin/products/:id/releases` | upload a build: raw body + headers `x-filename`, `x-version`, `x-notes` (URL-encoded) |
+| `POST /api/admin/releases/:id` | `action = delete` |
+| `GET /download/:slug` · `GET /download/:slug/:release` | **public**: the latest build of a software, or one specific build |
 | `POST /api/admin/systems/:id` | `action = lock \| unlock \| remove`, `message` |
 | `POST /api/admin/products` | `name`, `slug` (optional, derived from the name), `notes` |
 | `POST /api/admin/products/:id` | `action = update \| delete` (delete only without licences), `name, slug, notes` |
@@ -56,6 +64,35 @@ Software → New software, give it a name (the slug is derived, e.g. `playout-se
 program must send that slug as `product` in every device call; the software page shows the
 exact body. Keys are created per customer and software from the Licences page, or from the
 customer's or the software's own page.
+
+## Offline licence files
+
+A computer without internet cannot activate a key, so the platform issues it a signed file
+instead. On the licence page, "Offline licence file": paste the 20-character computer ID the
+program shows (Copy ID on its activation screen), set the validity, and download the `.lic`
+file; the operator imports it with "Import licence file…". The file is bound to that computer
+and software and counts as one seat. **Extend** on the dashboard (or the licence page) moves
+the licence's expiry and the file's expiry together; download the file again and hand it over.
+A lock or revoke cannot reach a computer that never connects, so keep offline validity short.
+
+The signature is RSASSA-PKCS1-v1_5 / SHA-256 with an RSA-2048 key. Generate the pair once:
+
+```bash
+node platform/deploy/keygen.mjs
+```
+
+Put the private key in `LICENSE_FILE_PRIVATE_KEY` (Railway variable) and the public modulus
+in each program (`PUBLIC_KEY_N` in `monitor/barpi_monitor/license.py`); `/api/v1/public-key`
+publishes it too. Losing or rotating the private key invalidates every issued file and needs
+new program builds, so keep it safe.
+
+## Downloads
+
+Each software has a Downloads panel: upload the exe or installer with its version, and give
+customers the public link `https://player.oncue.cy/download/<slug>` (always the latest build;
+`/download/<slug>/<release id>` for a specific one). Files live on the downloads volume
+(`DOWNLOADS_DIR`, a Railway volume mounted at `/data`); the database keeps version, size,
+SHA-256 and a download counter. Uploads stream straight to disk, so large builds are fine.
 
 ## Running locally
 
@@ -80,6 +117,8 @@ To point a program at it: `BarpiMonitor.exe --license-server http://localhost:30
 | `LICENSE_SIGNING_SECRET` | Signs activation tokens (16+ chars); changing it makes every computer activate again |
 | `PUBLIC_URL` | `https://player.oncue.cy` |
 | `LICENSE_CHECK_INTERVAL` | Optional; seconds between check-ins (default 300) |
+| `LICENSE_FILE_PRIVATE_KEY` | RSA-2048 private key (base64 PKCS#8 DER) that signs offline licence files; from `deploy/keygen.mjs` |
+| `DOWNLOADS_DIR` | Where uploaded builds are stored (`/data/downloads` on the Railway volume; `./data/downloads` locally) |
 
 ## Deployment (Railway + Cloudflare)
 

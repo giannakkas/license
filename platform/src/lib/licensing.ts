@@ -31,7 +31,7 @@ function str(v: unknown, max = 120): string {
   return typeof v === "string" ? v.slice(0, max) : "";
 }
 
-function checkInterval(): number {
+export function checkInterval(): number {
   const n = Number.parseInt(process.env.LICENSE_CHECK_INTERVAL ?? "", 10);
   return Number.isFinite(n) && n >= 30 ? n : 300;
 }
@@ -92,7 +92,15 @@ export async function activate(input: DeviceInput, ip: string): Promise<DeviceRe
     await record("refused", license.id, null, `${verdict.body.status} key used by ${str(input.hostname)}`, ip);
     return verdict;
   }
-  const details = { hostname: str(input.hostname, 80) || null, os: str(input.os, 80) || null, appVersion: str(input.version, 40) || null, ip, lastSeenAt: new Date() };
+  const details = {
+    hostname: str(input.hostname, 80) || null,
+    os: str(input.os, 80) || null,
+    appVersion: str(input.version, 40) || null,
+    ip,
+    lastSeenAt: new Date(),
+    mode: "online",
+    offlineExpiresAt: null as Date | null,
+  };
   let system = await prisma.system.findUnique({ where: { licenseId_machineId: { licenseId: license.id, machineId } } });
   if (!system) {
     const seats = await prisma.system.count({ where: { licenseId: license.id } });

@@ -12,6 +12,14 @@ platform, a red LOCKED screen replaces the video and playback stops until it is
 unlocked. Without internet the program keeps working for 3 days on its last
 answer. Help > Licence shows the status; Licence > Deactivate frees the seat.
 
+Computers with no internet at all use an offline licence file instead: send the
+Computer ID shown on the activation screen (Copy ID) to your supplier, who issues
+a .lic file for that computer on player.oncue.cy. Copy it over by USB and click
+"Import licence file...". The file works on that computer only, until the expiry
+date printed in Help > Licence; ask for a new file to extend it. Setting the
+computer's clock back to before the program last ran locks it until the clock
+is right again.
+
 Nothing is installed; settings are kept in
 %APPDATA%\BarpiMonitor\config.json and a log in %APPDATA%\BarpiMonitor\monitor.log.
 

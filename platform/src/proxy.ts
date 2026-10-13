@@ -4,7 +4,8 @@ import { SESSION_COOKIE, verifySessionToken } from "@/lib/session";
 /**
  * Next 16 calls this file `proxy.ts` (formerly middleware.ts).
  * The admin screens and admin API sit behind the platform password. The device API
- * (/api/v1/*) is authenticated by licence key and activation token instead.
+ * (/api/v1/*) is authenticated by licence key and activation token instead, and the build
+ * downloads (/download/*) are public: the files are useless without a licence.
  */
 export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
@@ -13,7 +14,8 @@ export async function proxy(request: NextRequest) {
     pathname === "/login" ||
     pathname === "/api/auth/login" ||
     pathname === "/api/health" ||
-    pathname.startsWith("/api/v1/");
+    pathname.startsWith("/api/v1/") ||
+    pathname.startsWith("/download/");
 
   if (isPublic) return NextResponse.next();
 

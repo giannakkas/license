@@ -1,11 +1,16 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { AutoDownload } from "@/components/auto-download";
 import { Badge } from "@/components/badge";
 import { ConfirmButton } from "@/components/confirm-button";
 import { ErrorBox } from "@/components/error-box";
+import { ExtendForm } from "@/components/extend-form";
+import { NoticeBox } from "@/components/notice-box";
 import { prisma } from "@/lib/db";
 import { fmtDate, fmtDay, timeAgo } from "@/lib/format";
+import { addMonths } from "@/lib/forms";
 import { isOnline } from "@/lib/licensing";
+import { offlineFilesConfigured } from "@/lib/offline";
 import { effectiveStatus } from "@/lib/stats";
 
 export const dynamic = "force-dynamic";
@@ -15,10 +20,10 @@ export default async function LicensePage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; notice?: string; download?: string }>;
 }) {
   const { id } = await params;
-  const { error } = await searchParams;
+  const { error, notice, download } = await searchParams;
   const [license, products, customers] = await Promise.all([
     prisma.license.findUnique({
       where: { id },
@@ -34,6 +39,9 @@ export default async function LicensePage({
   ]);
   if (!license) notFound();
   const action = `/api/admin/licenses/${license.id}`;
+  const back = `/licenses/${license.id}`;
+  const filesOn = offlineFilesConfigured();
+  const defaultFileExpiry = fmtDay(license.expiresAt && license.expiresAt > new Date() ? license.expiresAt : addMonths(new Date(), 12));
 
   return (
     <div className="flex flex-col gap-6">
@@ -46,6 +54,8 @@ export default async function LicensePage({
           </h1>
           <Badge status={effectiveStatus(license)} />
           <Link href={`/products/${license.product.id}`} className="muted text-sm hover:underline">{license.product.name}</Link>
+          <span className="muted text-sm">expires {license.expiresAt ? fmtDay(license.expiresAt) : "never"}</span>
+          {license.status !== "revoked" && <ExtendForm licenseId={license.id} back={back} />}
         </div>
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <code className="mono rounded border border-[#2a2f3a] bg-[#1e222b] px-3 py-1.5 text-lg font-bold tracking-wide select-all">{license.key}</code>
@@ -57,6 +67,8 @@ export default async function LicensePage({
       </div>
 
       <ErrorBox message={error} />
+      <NoticeBox message={notice} />
+      {download && <AutoDownload url={`/api/admin/systems/${download}/file`} />}
 
       <section className="grid gap-4 md:grid-cols-2">
         <div className="panel p-4">
@@ -106,6 +118,34 @@ export default async function LicensePage({
         </div>
       </section>
 
+      <section className="panel p-4">
+        <h2 className="mb-1 font-bold">Offline licence file</h2>
+        <p className="muted mb-3 text-sm">
+          For a computer with no internet. The program shows a 20-character computer ID on its activation screen (Copy ID):
+          enter it here, choose until when the file is valid, and give the downloaded <span className="mono">.lic</span> file to
+          the operator to import. The file works on that computer only and takes one of the licence&apos;s seats; to extend it,
+          extend the licence and download the file again.
+        </p>
+        {filesOn ? (
+          license.status === "revoked" ? (
+            <p className="muted text-sm">The licence is revoked; reinstate it to issue files.</p>
+          ) : (
+            <form method="post" action={action} className="grid gap-3 md:grid-cols-[2fr_2fr_1fr_auto]">
+              <input type="hidden" name="action" value="offline" />
+              <label className="flex flex-col gap-1 text-sm">
+                Computer ID
+                <input name="machineId" required minLength={20} placeholder="ABCDE12345FGHIJ67890" className="mono" />
+              </label>
+              <label className="flex flex-col gap-1 text-sm">Computer name (optional)<input name="hostname" placeholder="e.g. MCR-PC-2" /></label>
+              <label className="flex flex-col gap-1 text-sm">Valid until<input name="expiresAt" type="date" required defaultValue={defaultFileExpiry} /></label>
+              <div className="flex items-end"><button type="submit" className="btn btn-primary">Issue file</button></div>
+            </form>
+          )
+        ) : (
+          <p className="text-sm text-[#fcd34d]">Not configured on this platform: set LICENSE_FILE_PRIVATE_KEY (see the README).</p>
+        )}
+      </section>
+
       <section className="panel">
         <div className="flex items-center justify-between border-b border-[#2a2f3a] px-4 py-3">
           <h2 className="font-bold">Computers ({license.systems.length} of {license.maxSeats})</h2>
@@ -116,7 +156,7 @@ export default async function LicensePage({
         ) : (
           <table>
             <thead>
-              <tr><th>Computer</th><th>ID</th><th>Version</th><th>Last seen</th><th>Status</th><th>Actions</th></tr>
+              <tr><th>Computer</th><th>ID</th><th>Version</th><th>Licence</th><th>Last seen</th><th>Status</th><th>Actions</th></tr>
             </thead>
             <tbody>
               {license.systems.map((s) => {
@@ -129,6 +169,19 @@ export default async function LicensePage({
                     </td>
                     <td className="mono text-xs">{s.machineId}</td>
                     <td>{s.appVersion ?? "—"}</td>
+                    <td>
+                      {s.mode === "offline" ? (
+                        <>
+                          <Badge status="file" label="offline file" />
+                          <div className="muted mt-1 text-xs">
+                            valid until {fmtDay(s.offlineExpiresAt)} ·{" "}
+                            <a href={`/api/admin/systems/${s.id}/file`} className="text-[#93c5fd] hover:underline">Download file</a>
+                          </div>
+                        </>
+                      ) : (
+                        <Badge status="offline" label="online key" />
+                      )}
+                    </td>
                     <td>
                       <Badge status={online ? "online" : "offline"} />
                       <div className="muted mt-1 text-xs">{timeAgo(s.lastSeenAt)} · first {fmtDay(s.firstSeenAt)}</div>

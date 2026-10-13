@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ErrorBox } from "@/components/error-box";
+import { NoticeBox } from "@/components/notice-box";
 import { NewLicenseForm } from "@/components/license-form";
 import { LicenseTable } from "@/components/license-table";
 import { prisma } from "@/lib/db";
@@ -8,12 +9,12 @@ import { summarise } from "@/lib/stats";
 
 export const dynamic = "force-dynamic";
 
-type Query = { error?: string; product?: string; customer?: string; status?: string };
+type Query = { error?: string; notice?: string; product?: string; customer?: string; status?: string };
 
 const STATUSES = ["active", "locked", "revoked", "expired"] as const;
 
 export default async function Dashboard({ searchParams }: { searchParams: Promise<Query> }) {
-  const { error, product = "", customer = "", status = "" } = await searchParams;
+  const { error, notice, product = "", customer = "", status = "" } = await searchParams;
   const now = new Date();
   const where: Prisma.LicenseWhereInput = {
     ...(product ? { product: { slug: product } } : {}),
@@ -29,7 +30,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
       where,
       orderBy: { createdAt: "desc" },
       include: {
-        systems: { select: { status: true, lastSeenAt: true } },
+        systems: { select: { status: true, lastSeenAt: true, mode: true } },
         product: { select: { id: true, name: true } },
         customer: { select: { id: true, name: true } },
       },
@@ -37,6 +38,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   ]);
   const s = summarise(licenses);
   const filtered = Boolean(product || customer || status);
+  const query = new URLSearchParams({ ...(product && { product }), ...(customer && { customer }), ...(status && { status }) }).toString();
+  const back = query ? `/?${query}` : "/";
   const selectedProduct = products.find((p) => p.slug === product);
   const selectedCustomer = customers.find((c) => c.id === customer);
 
@@ -44,12 +47,13 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     <div className="flex flex-col gap-6">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="Licences" value={s.licences} />
-        <Stat label="Computers online" value={s.online} hint={`of ${s.computers}`} />
+        <Stat label="Computers online" value={s.online} hint={`of ${s.computers}${s.files ? `, ${s.files} offline file${s.files === 1 ? "" : "s"}` : ""}`} />
         <Stat label="Locked" value={s.locked} tone={s.locked ? "red" : undefined} />
         <Stat label="Revoked / expired" value={s.revoked + s.expired} />
       </div>
 
       <ErrorBox message={error} />
+      <NoticeBox message={notice} />
 
       <section className="panel">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#2a2f3a] px-4 py-3">
@@ -77,6 +81,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         </div>
         <LicenseTable
           licenses={licenses}
+          back={back}
           empty={filtered ? "No licences match these filters." : "No licences yet. Create the first one below."}
         />
       </section>

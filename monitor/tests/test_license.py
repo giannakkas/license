@@ -3,7 +3,7 @@ import time
 
 import pytest
 
-from barpi_monitor.license import (OFFLINE_GRACE_S, LicenseClient, LicenseError, LicenseState, ServerUnreachable,
+from barpi_monitor.license import (OFFLINE_GRACE_S, USABLE, LicenseClient, LicenseError, LicenseState, ServerUnreachable,
                                    Status, machine_id, normalise_key)
 
 KEY = "ONCUE-ABCDE-FGHIJ-KLMNO-PQRST"
@@ -125,3 +125,131 @@ def test_deactivate(client, tmp_path):
     assert server.calls[-1][0] == "deactivate"
     assert c.state.status == Status.UNLICENSED and c.state.key == ""
     assert LicenseState.load(tmp_path / "license.json").key == ""
+
+
+# ---------------------------------------------------------------- offline licence files
+
+import base64
+
+from barpi_monitor import license as L
+
+# Signed by Node's crypto.sign("sha256") with a throwaway RSA-2048 key: the platform's signer.
+NODE_N = ("-aT1s-VJ1dIzR2ZAG30eeOeg7zRbzkKkZO6S_NequI6mEKHr2uX0kC3H3SgyQB-Yfq2-2CsnNURrnbSUEKKfB1JhRKoDn_YNWE7GnFoy9EEgOi5"
+          "yzfElQMZQfCepQkBCNOEpjNOTJKhRrUkOmqTzIewCZkv63ViuOsUhQdbpW2dAd0tmSS4L4Zt2BTbofo4eKtxcTHktnibQLtZT6jrVxiISuH4Fiyi"
+          "KNtmrhF-_nYDBRtDkStuzHnOM0ThH2YN1jH759LAdTw2ryqd_G3vgqVRNFrvn_XfDklLt6iV_GrlIFEKBt0IpFslLGVgajq01Gp7kX0HEfU13-yX"
+          "72QFSLQ")
+NODE_PAYLOAD = ("eyJ2IjoxLCJrZXkiOiJPTkNVRS1BQkNERS1GR0hJSi1LTE1OTy1QUVJTVCIsInByb2R1Y3QiOiJtb25pdG9yaW5nLWFwcGxpY2F0aW9uIiwi"
+                "cHJvZHVjdF9uYW1lIjoiTW9uaXRvcmluZyBBcHBsaWNhdGlvbiIsImN1c3RvbWVyIjoiRGVsdGEgRk0iLCJsYWJlbCI6IlN0dWRpbyAyIiwi"
+                "bWFjaGluZV9pZCI6IkFCQ0RFRjAxMjM0NTY3ODlBQkNEIiwiaXNzdWVkX2F0IjoiMjAyNi0xMC0xM1QyMDowMDowMFoiLCJleHBpcmVzX2F0"
+                "IjoiMjAyNy0xMC0xM1QyMzo1OTo1OVoiLCJzZXJ2ZXIiOiJodHRwczovL3BsYXllci5vbmN1ZS5jeSIsImludGVydmFsIjozMDB9")
+NODE_SIG = ("u_U5-IxTiF_4CybU8LaVYKtNGS0_ojubkJeJBqlm_afiC8St2APuo9S8n8hQUiUngLYU-B42bXXkelCnWEkMut_TMulBYbnv8c8cXxNZhRNAwYTF"
+            "VHj3Y2kSLk-BxIirlIqzwA8E8TYsvPpO5wfbx7acU_S-dXIHbwNR49EaZafEVOvGNrRbyUH4GbNm0Sdv_SrVXczdVwLFzqt5Ae44IAY6eRD8jMwV"
+            "rV9KZHn6EipbJLUKGOS9IQ4o4v1YQ3ZL0skDiJtYipdhyIo_wYXrGemf_7g-OSOWVws7wjvLSK3rxY2GvTrFkedp47ESQzeZ7EcgbI1dIThGow_Q"
+            "fi_5CQ")
+
+
+def b64u(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).decode().rstrip("=")
+
+
+def write_lic(path, payload_b64: str, signature: str):
+    path.write_text(json.dumps({"format": "oncue-licence/1", "payload": payload_b64, "signature": signature}))
+    return path
+
+
+def test_node_signed_file_verifies_and_tampering_fails(tmp_path, monkeypatch):
+    monkeypatch.setattr(L, "PUBLIC_KEY_N", NODE_N)
+    payload, sig = L.read_license_file(write_lic(tmp_path / "ok.lic", NODE_PAYLOAD, NODE_SIG))
+    assert payload["key"] == KEY and payload["machine_id"] == "ABCDEF0123456789ABCD" and sig == NODE_SIG
+    tampered = json.loads(L.b64url_decode(NODE_PAYLOAD))
+    tampered["expires_at"] = "2099-01-01T00:00:00Z"
+    with pytest.raises(LicenseError):
+        L.read_license_file(write_lic(tmp_path / "bad.lic", b64u(json.dumps(tampered).encode()), NODE_SIG))
+    with pytest.raises(LicenseError):
+        L.read_license_file(write_lic(tmp_path / "sig.lic", NODE_PAYLOAD, NODE_SIG[:-4] + "AAAA"))
+    monkeypatch.setattr(L, "PUBLIC_KEY_N", L.PUBLIC_KEY_N if L.PUBLIC_KEY_N != NODE_N else "AQAB")
+    with pytest.raises(LicenseError, match="signature"):
+        L.read_license_file(write_lic(tmp_path / "other.lic", NODE_PAYLOAD, NODE_SIG))
+    (tmp_path / "junk.lic").write_text("{\"format\": \"something-else\"}")
+    with pytest.raises(LicenseError, match="not an OnCue"):
+        L.read_license_file(tmp_path / "junk.lic")
+
+
+@pytest.fixture
+def signer(monkeypatch):
+    """A throwaway platform key: files signed with it verify because the public modulus is patched in."""
+    pytest.importorskip("cryptography")
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import padding, rsa
+
+    priv = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    n = priv.public_key().public_numbers().n
+    monkeypatch.setattr(L, "PUBLIC_KEY_N", b64u(n.to_bytes((n.bit_length() + 7) // 8, "big")))
+
+    def make(path, machine, **overrides):
+        payload = {"v": 1, "license_id": "lic1", "system_id": "sys1", "key": KEY, "product": "monitoring-application",
+                   "product_name": "Monitoring Application", "customer": "Delta FM", "label": "Studio 2",
+                   "machine_id": machine, "hostname": "PC-1", "issued_at": "2026-10-13T20:00:00Z",
+                   "expires_at": "2099-01-01T23:59:59Z", "server": "https://platform.test", "interval": 120}
+        payload.update(overrides)
+        data = json.dumps(payload).encode()
+        sig = priv.sign(data, padding.PKCS1v15(), hashes.SHA256())
+        return write_lic(path, b64u(data), b64u(sig))
+
+    return make
+
+
+def test_import_file_activates_offline(client, tmp_path, signer):
+    c, server = client
+    path = signer(tmp_path / "a.lic", c.state.machine_id)
+    st = c.import_file(path)
+    assert st.mode == L.MODE_OFFLINE and st.status == Status.ACTIVE and c.usable()
+    assert st.key == KEY and st.label == "Delta FM – Studio 2" and st.file_expires_at.startswith("2099")
+    assert st.interval_s == 120 and st.server == "https://platform.test"
+    assert st.token == json.loads(path.read_text())["signature"], "the signature doubles as the check-in token"
+    assert LicenseClient(tmp_path / "license.json", post=server).usable()
+    # No internet at all: no grace period applies, the file carries the licence.
+    server.down = True
+    c.check()
+    assert c.state.last_error
+    assert c.effective_status(now=time.time() + OFFLINE_GRACE_S * 10)[0] == Status.ACTIVE
+    # A connection that does get through still lets the platform lock or revoke the computer.
+    server.down = False
+    server.answer = (200, {"status": "locked", "message": "Unpaid invoice"})
+    assert c.check().status == Status.LOCKED and not c.usable()
+    assert server.calls[-1][0] == "heartbeat" and server.calls[-1][1]["token"] == st.token
+    server.answer = (200, {"status": "active", "label": "Delta FM – Studio 2"})
+    assert c.check().status == Status.ACTIVE and c.usable()
+    server.answer = (403, {"status": "revoked", "message": "Licence revoked"})
+    assert c.check().status == Status.REVOKED and c.effective_status()[0] in L.NEEDS_ACTIVATION
+
+
+def test_offline_file_expiry_and_clock_guard(client, tmp_path, signer):
+    c, _ = client
+    c.import_file(signer(tmp_path / "a.lic", c.state.machine_id, expires_at="2030-06-30T23:59:59Z"))
+    expires = L.parse_iso("2030-06-30T23:59:59Z")
+    assert c.effective_status(now=expires - 60)[0] == Status.ACTIVE
+    status, message = c.effective_status(now=expires + 60)
+    assert status == Status.EXPIRED and "2030-06-30" in message and status in L.NEEDS_ACTIVATION
+    now = time.time()
+    c.tick(now=now)
+    assert c.effective_status(now=now - L.CLOCK_TOLERANCE_S + 60)[0] == Status.ACTIVE, "a small step back is tolerated"
+    status, message = c.effective_status(now=now - 2 * L.CLOCK_TOLERANCE_S)
+    assert status == Status.CLOCK and "clock" in message.lower() and not status in USABLE
+    assert c.effective_status(now=now + 10)[0] == Status.ACTIVE, "works again once the clock is right"
+    assert LicenseState.load(tmp_path / "license.json").clock_mark >= now - 1, "the mark is saved"
+
+
+def test_import_file_rejections(client, tmp_path, signer):
+    c, _ = client
+    with pytest.raises(LicenseError, match="this computer is"):
+        c.import_file(signer(tmp_path / "other.lic", "ZZZZZZZZZZZZZZZZZZZZ"))
+    with pytest.raises(LicenseError, match="not for this program"):
+        c.import_file(signer(tmp_path / "prod.lic", c.state.machine_id, product="playout-server", product_name="Playout Server"))
+    with pytest.raises(LicenseError, match="expired on 2020-01-01"):
+        c.import_file(signer(tmp_path / "old.lic", c.state.machine_id, expires_at="2020-01-01T23:59:59Z"))
+    assert c.state.status == Status.UNLICENSED and not c.usable()
+    # Going back to a key puts the computer in online mode again.
+    c.import_file(signer(tmp_path / "ok.lic", c.state.machine_id))
+    c.activate(KEY)
+    assert c.state.mode == L.MODE_ONLINE and c.state.file_expires_at == ""

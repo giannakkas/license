@@ -16,3 +16,11 @@ export function parseExpiry(value: unknown): { ok: true; date: Date | null } | {
   const date = new Date(`${raw}T23:59:59Z`);
   return Number.isNaN(date.getTime()) ? { ok: false, date: null } : { ok: true, date };
 }
+
+/** The same day `months` later, clamped to the month's length, at the end of the day (UTC). */
+export function addMonths(date: Date, months: number): Date {
+  const y = date.getUTCFullYear();
+  const m = date.getUTCMonth() + months;
+  const lastDay = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(y, m, Math.min(date.getUTCDate(), lastDay), 23, 59, 59));
+}

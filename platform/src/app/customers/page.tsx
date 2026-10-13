@@ -13,7 +13,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
     orderBy: { name: "asc" },
     include: {
       licenses: {
-        select: { status: true, expiresAt: true, product: { select: { name: true } }, systems: { select: { status: true, lastSeenAt: true } } },
+        select: { status: true, expiresAt: true, product: { select: { name: true } }, systems: { select: { status: true, lastSeenAt: true, mode: true } } },
       },
     },
   });

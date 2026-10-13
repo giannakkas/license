@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ConfirmButton } from "@/components/confirm-button";
 import { ErrorBox } from "@/components/error-box";
+import { NoticeBox } from "@/components/notice-box";
 import { NewLicenseForm } from "@/components/license-form";
 import { LicenseTable } from "@/components/license-table";
 import { prisma } from "@/lib/db";
@@ -15,10 +16,10 @@ export default async function CustomerPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; notice?: string }>;
 }) {
   const { id } = await params;
-  const { error } = await searchParams;
+  const { error, notice } = await searchParams;
   const [customer, products, customers] = await Promise.all([
     prisma.customer.findUnique({
       where: { id },
@@ -26,7 +27,7 @@ export default async function CustomerPage({
         licenses: {
           orderBy: { createdAt: "desc" },
           include: {
-            systems: { select: { status: true, lastSeenAt: true } },
+            systems: { select: { status: true, lastSeenAt: true, mode: true } },
             product: { select: { id: true, name: true } },
             customer: { select: { id: true, name: true } },
           },
@@ -52,10 +53,11 @@ export default async function CustomerPage({
       </div>
 
       <ErrorBox message={error} />
+      <NoticeBox message={notice} />
 
       <section className="panel">
         <div className="border-b border-[#2a2f3a] px-4 py-3"><h2 className="font-bold">Licences</h2></div>
-        <LicenseTable licenses={customer.licenses} showCustomer={false} empty="No licences for this customer yet." />
+        <LicenseTable licenses={customer.licenses} back={`/customers/${customer.id}`} showCustomer={false} empty="No licences for this customer yet." />
       </section>
 
       <section className="grid gap-4 md:grid-cols-2">

@@ -17,7 +17,7 @@ from . import APP_NAME, __version__, theme
 from .config import Config, Source, guess_name, is_url
 from .dialogs import VIDEO_FILTER, SettingsDialog, SourceDialog
 from .license import USABLE, LicenseClient
-from .license_ui import ActivationDialog, LicenseDialog, LicenseMonitor, LockScreen
+from .license_ui import ActivationDialog, LicenseDialog, LicenseMonitor, LockScreen, import_license_file
 from .main import base_dir
 from .tile import SourceTile
 
@@ -64,6 +64,7 @@ class MainWindow(QMainWindow):
         self.lock_screen = LockScreen()
         self.lock_screen.check_again.connect(self._license_check_now)
         self.lock_screen.enter_key.connect(self._license_enter_key)
+        self.lock_screen.import_file.connect(self._license_import_file)
         self.stack.addWidget(self.grid_host)
         self.stack.addWidget(self.lock_screen)
         self.setCentralWidget(self.stack)
@@ -535,6 +536,20 @@ class MainWindow(QMainWindow):
             self.license_monitor.publish()
         else:
             self.on_license_status(*self.license_client.effective_status())
+
+    def _license_import_file(self) -> None:
+        if self.license_client is None:
+            return
+        ok, message = import_license_file(self.license_client, parent=self)
+        if message:
+            self._log_line(message, theme.GREEN if ok else theme.RED)
+            if not ok:
+                self.lock_screen.message.setText(message)
+        if ok:
+            if self.license_monitor is not None:
+                self.license_monitor.publish()
+            else:
+                self.on_license_status(*self.license_client.effective_status())
 
     def _license_enter_key(self) -> None:
         if self.license_client is None:
