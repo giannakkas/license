@@ -23,20 +23,28 @@ if (-not (Test-Path vendor\libmpv-2.dll)) {
                 if ($asset) { $MpvArchiveUrl = $asset.browser_download_url; break }
             } catch { Write-Warning "$repo lookup failed: $_" }
         }
+        if (-not $MpvArchiveUrl) {
+            # The same builds are mirrored on SourceForge (the download link mpv.io points to).
+            try {
+                [xml]$rss = Invoke-WebRequest -Headers $headers "https://sourceforge.net/projects/mpv-player-windows/rss?path=/libmpv" | Select-Object -ExpandProperty Content
+                $link = $rss.rss.channel.item | ForEach-Object { $_.link } | Where-Object { $_ -match 'mpv-dev-x86_64-\d.*\.7z/download$' } | Select-Object -First 1
+                if ($link) { $MpvArchiveUrl = $link }
+            } catch { Write-Warning "SourceForge lookup failed: $_" }
+        }
         if (-not $MpvArchiveUrl) { throw "Could not find a libmpv build. Pass -MpvArchiveUrl or copy libmpv-2.dll into monitor\vendor." }
     }
     Write-Host "Downloading $MpvArchiveUrl"
-    Invoke-WebRequest -Headers @{ "User-Agent" = "barpi-monitor-build" } $MpvArchiveUrl -OutFile vendor\mpv-dev.7z
+    Invoke-WebRequest -Headers @{ "User-Agent" = "barpi-monitor-build" } -MaximumRedirection 10 $MpvArchiveUrl -OutFile vendor\mpv-dev.7z
     $sevenZip = Get-Command 7z -ErrorAction SilentlyContinue
     if (-not $sevenZip -and (Test-Path "$env:ProgramFiles\7-Zip\7z.exe")) { $sevenZip = "$env:ProgramFiles\7-Zip\7z.exe" }
     if ($sevenZip) {
         & $sevenZip e vendor\mpv-dev.7z libmpv-2.dll -ovendor -y | Out-Null
     } else {
-        Write-Host "7-Zip not found; extracting with py7zr"
-        python -m pip install py7zr | Out-Null
-        python -c "import py7zr; a=py7zr.SevenZipFile('vendor/mpv-dev.7z'); a.extract(path='vendor', targets=['libmpv-2.dll']); a.close()"
+        # Windows 10/11 ship bsdtar, which reads 7z archives (including their BCJ2 filter).
+        Write-Host "7-Zip not found; extracting with tar"
+        tar -xf vendor\mpv-dev.7z -C vendor libmpv-2.dll
     }
-    Split-Path -Leaf $MpvArchiveUrl | Set-Content vendor\LIBMPV-VERSION.txt
+    ($MpvArchiveUrl -replace '/download$', '' | Split-Path -Leaf) | Set-Content vendor\LIBMPV-VERSION.txt
     Remove-Item vendor\mpv-dev.7z
 }
 if (-not (Test-Path vendor\libmpv-2.dll)) { throw "vendor\libmpv-2.dll is still missing" }

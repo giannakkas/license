@@ -100,6 +100,13 @@ Settings and sources: `%APPDATA%\BarpiMonitor\config.json`. Log: `monitor.log` n
 
 ## Troubleshooting
 
+- **The Actions job fails after a few seconds with no log**: open the run and read the
+  annotation. "The job was not started because recent account payments have failed or
+  your spending limit needs to be increased" means GitHub is refusing to start a hosted
+  Windows runner for this private repository (Windows minutes are billed at 2×). Fix it
+  under *GitHub → Settings → Billing & plans* (payment method or spending limit) and
+  re-run the workflow, or build on a Windows PC with `monitor\build.ps1`.
+
 - **No sound**: pick the device in *Audio out*; check *Mute all* is off and the right tile is selected (blue border, AUDIO badge).
 - **RTSP will not connect**: the program forces TCP transport; make sure the camera allows it. The tile's status shows mpv's last error.
 - **High CPU with many tiles**: hardware decoding is on by default (Settings); lower the source resolution if the GPU cannot keep up.

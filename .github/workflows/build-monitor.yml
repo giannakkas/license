@@ -46,8 +46,14 @@ jobs:
               Write-Host "No matching asset in $repo. Assets:"; $rel.assets | ForEach-Object { Write-Host "  $($_.name)" }
             } catch { Write-Warning "$repo failed: $_" }
           }
+          if (-not $url) {
+            # The same builds are mirrored on SourceForge (where mpv.io's download link points).
+            [xml]$rss = Invoke-WebRequest "https://sourceforge.net/projects/mpv-player-windows/rss?path=/libmpv" | Select-Object -ExpandProperty Content
+            $link = $rss.rss.channel.item | ForEach-Object { $_.link } | Where-Object { $_ -match 'mpv-dev-x86_64-\d.*\.7z/download$' } | Select-Object -First 1
+            if ($link) { $url = $link; $name = ($link -replace '/download$', '' | Split-Path -Leaf); Write-Host "Using SourceForge: $name" }
+          }
           if (-not $url) { throw "No libmpv build found" }
-          Invoke-WebRequest $url -OutFile monitor/vendor/mpv-dev.7z
+          Invoke-WebRequest -MaximumRedirection 10 $url -OutFile monitor/vendor/mpv-dev.7z
           7z e monitor/vendor/mpv-dev.7z libmpv-2.dll -omonitor/vendor -y | Out-Null
           if (-not (Test-Path monitor/vendor/libmpv-2.dll)) { 7z l monitor/vendor/mpv-dev.7z; throw "libmpv-2.dll not in archive" }
           Set-Content monitor/vendor/LIBMPV-VERSION.txt "$name"
