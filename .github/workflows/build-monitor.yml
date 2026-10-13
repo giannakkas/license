@@ -1,8 +1,9 @@
 name: Build Barpi Monitor (Windows exe)
 
+# Every branch builds and self-tests the exe (kept as a workflow artifact);
+# only main and manual runs publish the monitor-latest release (see the last step).
 on:
   push:
-    branches: [main]
     paths:
       - "monitor/**"
       - ".github/workflows/build-monitor.yml"
@@ -98,6 +99,8 @@ jobs:
           $notes = "Barpi Monitor $v, built from ${{ github.sha }} (branch ${{ github.ref_name }}).`n`n" +
                    "Download BarpiMonitor.exe (or the zip, which includes a README). libmpv: $(Get-Content monitor/vendor/LIBMPV-VERSION.txt)`n`n" +
                    "Windows SmartScreen may warn because the exe is not code-signed: choose More info > Run anyway."
-          gh release delete monitor-latest --cleanup-tag --yes 2>$null
+          $ErrorActionPreference = "Continue"
+          try { gh release delete monitor-latest --cleanup-tag --yes } catch { Write-Host "no previous release to replace" }
+          $ErrorActionPreference = "Stop"
           gh release create monitor-latest --target ${{ github.sha }} --prerelease --title "Barpi Monitor $v (latest build)" --notes "$notes" monitor/dist/BarpiMonitor.exe "${{ steps.package.outputs.zip }}"
           Write-Host "Published: https://github.com/${{ github.repository }}/releases/tag/monitor-latest"

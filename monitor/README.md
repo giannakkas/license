@@ -12,10 +12,14 @@ of the Barpi web app: Python, Qt and libmpv, packaged as a single `BarpiMonitor.
 
 ## Download
 
-Every push that touches `monitor/` builds the exe on GitHub Actions, self-tests it, and
-publishes it as the **`monitor-latest`** pre-release:
+Every push that touches `monitor/` builds the exe on GitHub Actions and self-tests it.
+Builds from `main` (and manual runs of the workflow) are published as the
+**`monitor-latest`** pre-release:
 
 https://github.com/giannakkas/barpi/releases/tag/monitor-latest
+
+Builds from other branches are kept as a workflow artifact instead: open the run under
+*Actions → Build Barpi Monitor (Windows exe)* and download `BarpiMonitor-<version>-win64`.
 
 Take `BarpiMonitor.exe` (or the zip, which adds a short README). It needs nothing
 installed. The exe is not code-signed, so SmartScreen will ask once: *More info → Run anyway*.
