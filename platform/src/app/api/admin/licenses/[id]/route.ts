@@ -1,38 +1,53 @@
 import { prisma } from "@/lib/db";
+import { field, parseExpiry, parseSeats } from "@/lib/forms";
 import { clientIp, done, readBody } from "@/lib/request";
 
 export const runtime = "nodejs";
 
 /**
  * Change a licence. Form field `action`: update | lock | unlock | revoke | reinstate | delete.
+ * `update` takes customerId, productId, label, maxSeats, expiresAt, notes; only the fields sent change.
  * `message` is what the programs show while locked / revoked.
  */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const body = await readBody(request);
   const action = typeof body.action === "string" ? body.action : "";
-  const message = typeof body.message === "string" ? body.message.trim().slice(0, 300) : "";
-  const license = await prisma.license.findUnique({ where: { id } });
+  const message = field(body.message, 300);
+  const license = await prisma.license.findUnique({ where: { id }, include: { customer: true, product: true } });
   if (!license) return done(request, "/?error=Licence+not+found", { error: "not found" }, 404);
   const ip = clientIp(request);
   const back = `/licenses/${id}`;
+  const fail = (msg: string, status = 400) => done(request, `${back}?error=${encodeURIComponent(msg)}`, { error: msg }, status);
 
   switch (action) {
     case "update": {
-      const seats = Math.max(1, Math.min(500, Number.parseInt(String(body.maxSeats ?? license.maxSeats), 10) || license.maxSeats));
-      const expiresRaw = typeof body.expiresAt === "string" ? body.expiresAt.trim() : "";
-      const expiresAt = expiresRaw ? new Date(`${expiresRaw}T23:59:59Z`) : null;
-      if (expiresAt && Number.isNaN(expiresAt.getTime())) return done(request, `${back}?error=Invalid+expiry+date`, { error: "invalid expiresAt" }, 400);
+      const seats = "maxSeats" in body ? parseSeats(body.maxSeats, license.maxSeats) : license.maxSeats;
+      const expires = "expiresAt" in body ? parseExpiry(body.expiresAt) : { ok: true as const, date: license.expiresAt };
+      if (!expires.ok) return fail("Invalid expiry date");
+      const customerId = field(body.customerId, 64) || license.customerId;
+      const productId = field(body.productId, 64) || license.productId;
+      const [customer, product] = await Promise.all([
+        prisma.customer.findUnique({ where: { id: customerId } }),
+        prisma.product.findUnique({ where: { id: productId } }),
+      ]);
+      if (!customer) return fail("Customer not found");
+      if (!product) return fail("Software not found");
       await prisma.license.update({
         where: { id },
         data: {
-          label: (typeof body.label === "string" && body.label.trim().slice(0, 120)) || license.label,
-          notes: typeof body.notes === "string" ? body.notes.slice(0, 2000) : license.notes,
+          customerId,
+          productId,
+          label: "label" in body ? field(body.label, 120) || null : license.label,
+          notes: "notes" in body ? field(body.notes, 2000) || null : license.notes,
           maxSeats: seats,
-          expiresAt,
+          expiresAt: expires.date,
         },
       });
-      await prisma.event.create({ data: { kind: "updated", licenseId: id, detail: `seats ${seats}, expires ${expiresRaw || "never"}`, ip } });
+      const changes = [`seats ${seats}`, `expires ${expires.date ? expires.date.toISOString().slice(0, 10) : "never"}`];
+      if (customerId !== license.customerId) changes.push(`customer ${license.customer.name} → ${customer.name}`);
+      if (productId !== license.productId) changes.push(`software ${license.product.name} → ${product.name}`);
+      await prisma.event.create({ data: { kind: "updated", licenseId: id, detail: changes.join(", "), ip } });
       return done(request, back);
     }
     case "lock":
@@ -50,9 +65,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return done(request, back);
     case "delete":
       await prisma.license.delete({ where: { id } });
-      await prisma.event.create({ data: { kind: "deleted", detail: `licence ${license.key.slice(-5)} (${license.label}) deleted`, ip } });
-      return done(request, "/");
+      await prisma.event.create({
+        data: { kind: "deleted", detail: `licence …${license.key.slice(-5)} (${license.product.name}, ${license.customer.name}) deleted`, ip },
+      });
+      return done(request, `/customers/${license.customerId}`);
     default:
-      return done(request, `${back}?error=Unknown+action`, { error: "unknown action" }, 400);
+      return fail("Unknown action");
   }
 }

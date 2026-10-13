@@ -1,103 +1,102 @@
 import Link from "next/link";
-import { Badge } from "@/components/badge";
+import { ErrorBox } from "@/components/error-box";
+import { NewLicenseForm } from "@/components/license-form";
+import { LicenseTable } from "@/components/license-table";
 import { prisma } from "@/lib/db";
-import { fmtDay, isExpired, timeAgo } from "@/lib/format";
-import { isOnline } from "@/lib/licensing";
+import type { Prisma } from "@/generated/prisma/client";
+import { summarise } from "@/lib/stats";
 
 export const dynamic = "force-dynamic";
 
-export default async function Dashboard({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
-  const { error } = await searchParams;
-  const licenses = await prisma.license.findMany({
-    orderBy: { createdAt: "desc" },
-    include: { systems: { select: { status: true, lastSeenAt: true } } },
-  });
-  const online = licenses.reduce((n, l) => n + l.systems.filter((s) => isOnline(s.lastSeenAt)).length, 0);
-  const locked = licenses.filter((l) => l.status === "locked").length + licenses.reduce((n, l) => n + l.systems.filter((s) => s.status === "locked").length, 0);
+type Query = { error?: string; product?: string; customer?: string; status?: string };
+
+const STATUSES = ["active", "locked", "revoked", "expired"] as const;
+
+export default async function Dashboard({ searchParams }: { searchParams: Promise<Query> }) {
+  const { error, product = "", customer = "", status = "" } = await searchParams;
+  const now = new Date();
+  const where: Prisma.LicenseWhereInput = {
+    ...(product ? { product: { slug: product } } : {}),
+    ...(customer ? { customerId: customer } : {}),
+    ...(status === "active" ? { status: "active", OR: [{ expiresAt: null }, { expiresAt: { gte: now } }] } : {}),
+    ...(status === "expired" ? { status: "active", expiresAt: { lt: now } } : {}),
+    ...(status === "locked" || status === "revoked" ? { status } : {}),
+  };
+  const [products, customers, licenses] = await Promise.all([
+    prisma.product.findMany({ orderBy: { name: "asc" } }),
+    prisma.customer.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    prisma.license.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      include: {
+        systems: { select: { status: true, lastSeenAt: true } },
+        product: { select: { id: true, name: true } },
+        customer: { select: { id: true, name: true } },
+      },
+    }),
+  ]);
+  const s = summarise(licenses);
+  const filtered = Boolean(product || customer || status);
+  const selectedProduct = products.find((p) => p.slug === product);
+  const selectedCustomer = customers.find((c) => c.id === customer);
 
   return (
     <div className="flex flex-col gap-6">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="Licences" value={licenses.length} />
-        <Stat label="Computers online" value={online} />
-        <Stat label="Locked" value={locked} tone={locked ? "red" : undefined} />
-        <Stat label="Revoked" value={licenses.filter((l) => l.status === "revoked").length} />
+        <Stat label="Licences" value={s.licences} />
+        <Stat label="Computers online" value={s.online} hint={`of ${s.computers}`} />
+        <Stat label="Locked" value={s.locked} tone={s.locked ? "red" : undefined} />
+        <Stat label="Revoked / expired" value={s.revoked + s.expired} />
       </div>
 
-      {error && <p className="rounded border border-[#7a2323] bg-[#3a1416] px-3 py-2 text-sm text-[#fca5a5]">{error}</p>}
+      <ErrorBox message={error} />
 
       <section className="panel">
-        <div className="flex items-center justify-between border-b border-[#2a2f3a] px-4 py-3">
-          <h2 className="font-bold">Licences</h2>
-          <span className="muted text-xs">Click a key to open it</span>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#2a2f3a] px-4 py-3">
+          <h2 className="font-bold">
+            Licences
+            {selectedProduct && <span className="muted font-normal"> · {selectedProduct.name}</span>}
+            {selectedCustomer && <span className="muted font-normal"> · {selectedCustomer.name}</span>}
+          </h2>
+          <form method="get" action="/" className="flex flex-wrap items-center gap-2 text-sm">
+            <select name="product" defaultValue={product} aria-label="Software">
+              <option value="">All software</option>
+              {products.map((p) => <option key={p.id} value={p.slug}>{p.name}</option>)}
+            </select>
+            <select name="customer" defaultValue={customer} aria-label="Customer">
+              <option value="">All customers</option>
+              {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <select name="status" defaultValue={status} aria-label="Status">
+              <option value="">Any status</option>
+              {STATUSES.map((st) => <option key={st} value={st}>{st}</option>)}
+            </select>
+            <button type="submit" className="btn btn-small">Filter</button>
+            {filtered && <Link href="/" className="btn btn-small">Clear</Link>}
+          </form>
         </div>
-        {licenses.length === 0 ? (
-          <p className="muted px-4 py-6 text-sm">No licences yet. Create the first one below.</p>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Key</th><th>Licensed to</th><th>Status</th><th>Computers</th><th>Last seen</th><th>Expires</th>
-              </tr>
-            </thead>
-            <tbody>
-              {licenses.map((l) => {
-                const last = l.systems.reduce<Date | null>((m, s) => (!m || s.lastSeenAt > m ? s.lastSeenAt : m), null);
-                const lockedSystems = l.systems.filter((s) => s.status === "locked").length;
-                const expired = isExpired(l.expiresAt);
-                return (
-                  <tr key={l.id}>
-                    <td><Link href={`/licenses/${l.id}`} className="mono font-semibold hover:underline">{l.key}</Link></td>
-                    <td>{l.label}<div className="muted text-xs">{l.product}</div></td>
-                    <td><Badge status={expired && l.status === "active" ? "expired" : l.status} /></td>
-                    <td>
-                      {l.systems.length} / {l.maxSeats}
-                      {lockedSystems > 0 && <span className="ml-2 text-xs text-[#fca5a5]">{lockedSystems} locked</span>}
-                    </td>
-                    <td className={last && isOnline(last) ? "text-[#4ade80]" : "muted"}>{timeAgo(last)}</td>
-                    <td className={expired ? "text-[#fcd34d]" : "muted"}>{l.expiresAt ? fmtDay(l.expiresAt) : "never"}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
+        <LicenseTable
+          licenses={licenses}
+          empty={filtered ? "No licences match these filters." : "No licences yet. Create the first one below."}
+        />
       </section>
 
       <section className="panel p-4">
         <h2 className="mb-3 font-bold">New licence</h2>
-        <form method="post" action="/api/admin/licenses" className="grid gap-3 md:grid-cols-[2fr_1fr_1fr_auto]">
-          <label className="flex flex-col gap-1 text-sm">
-            Licensed to
-            <input name="label" placeholder="Customer, studio or person" required />
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            Computers allowed
-            <input name="maxSeats" type="number" min={1} max={500} defaultValue={1} />
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            Expires (optional)
-            <input name="expiresAt" type="date" />
-          </label>
-          <div className="flex items-end">
-            <button type="submit" className="btn btn-primary">Create key</button>
-          </div>
-          <label className="flex flex-col gap-1 text-sm md:col-span-4">
-            Notes (optional)
-            <input name="notes" placeholder="Invoice number, contact, anything useful" />
-          </label>
-          <input type="hidden" name="product" value="monitoring-application" />
-        </form>
+        <NewLicenseForm products={products} customers={customers} productId={selectedProduct?.id} customerId={selectedCustomer?.id} />
       </section>
     </div>
   );
 }
 
-function Stat({ label, value, tone }: { label: string; value: number; tone?: "red" }) {
+function Stat({ label, value, hint, tone }: { label: string; value: number; hint?: string; tone?: "red" }) {
   return (
     <div className="panel px-4 py-3">
       <div className="muted text-xs uppercase tracking-wide">{label}</div>
-      <div className={`text-2xl font-bold ${tone === "red" ? "text-[#fca5a5]" : ""}`}>{value}</div>
+      <div className={`text-2xl font-bold ${tone === "red" ? "text-[#fca5a5]" : ""}`}>
+        {value}
+        {hint && <span className="muted ml-2 text-sm font-normal">{hint}</span>}
+      </div>
     </div>
   );
 }

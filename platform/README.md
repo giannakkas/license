@@ -1,9 +1,12 @@
 # Licensing platform (player.oncue.cy)
 
-Manages the serial keys for the **Monitoring Application** (`../monitor`): create keys,
-see which computers activated them and when they last checked in, lock or unlock a whole
-licence or a single computer, revoke, and keep an activity log. The program checks in every
-few minutes; a lock takes effect within one check-in.
+Serial keys for every software you ship, kept per **customer** and per **software**:
+register each software (its *slug* is what the program sends as `product`), keep the
+customers, create keys, see which computers activated them and when they last checked in,
+lock or unlock a whole licence or a single computer, revoke, and keep an activity log. The
+programs check in every few minutes; a lock takes effect within one check-in. The
+**Monitoring Application** (`../monitor`) is the first software; any other program uses the
+same device API with its own slug.
 
 Stack: the same as the newsroom app next door (Next.js 16, Prisma 7 on PostgreSQL,
 Tailwind 4), one admin password, HMAC-signed session cookie.
@@ -11,9 +14,9 @@ Tailwind 4), one admin password, HMAC-signed session cookie.
 ## How a program is licensed
 
 1. On first start the program asks for a key (`ONCUE-XXXXX-XXXXX-XXXXX-XXXXX`, shown on the
-   licence page here) and posts it with a computer id to `POST /api/v1/activate`.
-   The platform registers the computer (if the licence has a free seat) and returns an
-   activation token.
+   licence page here) and posts it with a computer id and its software slug (`product`) to
+   `POST /api/v1/activate`. A key issued for another software is refused. The platform
+   registers the computer (if the licence has a free seat) and returns an activation token.
 2. Every `LICENSE_CHECK_INTERVAL` seconds (default 300) the program posts to
    `POST /api/v1/heartbeat`. The answer is `active` or `locked` (with the message you typed),
    or `revoked` / `expired` / `unknown`, after which the program asks for a key again.
@@ -39,9 +42,20 @@ answer JSON instead of redirecting. All need the session cookie from `POST /api/
 
 | Endpoint | Fields |
 | --- | --- |
-| `POST /api/admin/licenses` | `label, maxSeats, expiresAt (YYYY-MM-DD), notes, product` |
-| `POST /api/admin/licenses/:id` | `action = update \| lock \| unlock \| revoke \| reinstate \| delete`, `message`, and the update fields |
+| `POST /api/admin/licenses` | `productId` or `product` (slug); `customerId`, or `customerName` (+ `customerEmail`) to create the customer; `label` (a reference such as site or invoice), `maxSeats`, `expiresAt (YYYY-MM-DD)`, `notes` |
+| `POST /api/admin/licenses/:id` | `action = update \| lock \| unlock \| revoke \| reinstate \| delete`, `message`, and for update: `customerId, productId, label, maxSeats, expiresAt, notes` |
 | `POST /api/admin/systems/:id` | `action = lock \| unlock \| remove`, `message` |
+| `POST /api/admin/products` | `name`, `slug` (optional, derived from the name), `notes` |
+| `POST /api/admin/products/:id` | `action = update \| delete` (delete only without licences), `name, slug, notes` |
+| `POST /api/admin/customers` | `name`, `email`, `phone`, `notes` |
+| `POST /api/admin/customers/:id` | `action = update \| delete` (delete only without licences), `name, email, phone, notes` |
+
+### Adding a software
+
+Software → New software, give it a name (the slug is derived, e.g. `playout-server`). The
+program must send that slug as `product` in every device call; the software page shows the
+exact body. Keys are created per customer and software from the Licences page, or from the
+customer's or the software's own page.
 
 ## Running locally
 

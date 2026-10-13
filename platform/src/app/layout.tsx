@@ -3,8 +3,8 @@ import { Header } from "@/components/header";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Monitoring Application — licensing",
-  description: "Serial keys, activated computers and remote lock for the Monitoring Application.",
+  title: "OnCue Licensing",
+  description: "Serial keys per customer and software, activated computers and remote lock.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

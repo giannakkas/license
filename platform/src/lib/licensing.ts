@@ -6,10 +6,14 @@
  * invalid. `locked` keeps the registration (the admin can unlock); the rest make the
  * program ask for a key again.
  */
+import { DEFAULT_PRODUCT_SLUG, licensedTo } from "@/lib/catalog";
 import { prisma } from "@/lib/db";
 import { hashToken, makeToken, normaliseKey, tokenMatches } from "@/lib/keys";
 
-export const DEFAULT_PRODUCT = "monitoring-application";
+export const DEFAULT_PRODUCT = DEFAULT_PRODUCT_SLUG;
+
+/** The relation data the device replies need: which software the key is for and who holds it. */
+const LICENSE_INCLUDE = { product: { select: { slug: true, name: true } }, customer: { select: { name: true } } } as const;
 
 export type DeviceReply = { code: number; body: Record<string, unknown> };
 
@@ -36,7 +40,16 @@ function reply(code: number, status: string, message: string, extra: Record<stri
   return { code, body: { status, message, interval: checkInterval(), ...extra } };
 }
 
-type LicenseRow = { id: string; status: string; expiresAt: Date | null; lockMessage: string | null; label: string; maxSeats: number; product: string };
+type LicenseRow = {
+  id: string;
+  status: string;
+  expiresAt: Date | null;
+  lockMessage: string | null;
+  label: string | null;
+  maxSeats: number;
+  product: { slug: string; name: string };
+  customer: { name: string };
+};
 
 function licenseVerdict(license: LicenseRow): DeviceReply | null {
   if (license.status === "revoked") return reply(403, "revoked", license.lockMessage || "This licence has been revoked.");
@@ -64,14 +77,15 @@ export async function activate(input: DeviceInput, ip: string): Promise<DeviceRe
   const key = normaliseKey(input.key);
   const machineId = str(input.machine_id, 64);
   if (!key || !machineId) return reply(400, "invalid", "A licence key and a computer id are required.");
-  const license = await prisma.license.findUnique({ where: { key } });
+  const license = await prisma.license.findUnique({ where: { key }, include: LICENSE_INCLUDE });
   if (!license) {
     await record("refused", null, null, `unknown key ${key.slice(-5)} from ${str(input.hostname)}`, ip);
     return reply(404, "invalid", "This licence key is not known. Check it and try again.");
   }
   const product = str(input.product) || DEFAULT_PRODUCT;
-  if (license.product && license.product !== product) {
-    return reply(403, "invalid", `This key is for ${license.product}, not ${product}.`);
+  if (license.product.slug !== product) {
+    await record("refused", license.id, null, `key for ${license.product.name} used by "${product}" on ${str(input.hostname)}`, ip);
+    return reply(403, "invalid", `This key is for ${license.product.name}, not for this program.`);
   }
   const verdict = licenseVerdict(license);
   if (verdict) {
@@ -93,14 +107,14 @@ export async function activate(input: DeviceInput, ip: string): Promise<DeviceRe
   }
   const token = makeToken(license.id, machineId, system.id);
   system = await prisma.system.update({ where: { id: system.id }, data: { tokenHash: hashToken(token), ...details } });
-  return okOrLocked(license, system, { token, label: license.label, expires_at: license.expiresAt?.toISOString() ?? null });
+  return okOrLocked(license, system, { token, label: licensedTo(license), expires_at: license.expiresAt?.toISOString() ?? null });
 }
 
 export async function heartbeat(input: DeviceInput, ip: string): Promise<DeviceReply> {
   const key = normaliseKey(input.key);
   const machineId = str(input.machine_id, 64);
   if (!key || !machineId) return reply(400, "invalid", "A licence key and a computer id are required.");
-  const license = await prisma.license.findUnique({ where: { key } });
+  const license = await prisma.license.findUnique({ where: { key }, include: LICENSE_INCLUDE });
   if (!license) return reply(404, "invalid", "This licence key is no longer known.");
   const system = await prisma.system.findUnique({ where: { licenseId_machineId: { licenseId: license.id, machineId } } });
   if (!system) return reply(404, "unknown", "This computer is not registered to the licence any more. Activate it again.");
@@ -118,14 +132,14 @@ export async function heartbeat(input: DeviceInput, ip: string): Promise<DeviceR
     },
   });
   if (verdict) return verdict;
-  return okOrLocked(license, updated, { label: license.label, expires_at: license.expiresAt?.toISOString() ?? null });
+  return okOrLocked(license, updated, { label: licensedTo(license), expires_at: license.expiresAt?.toISOString() ?? null });
 }
 
 export async function deactivate(input: DeviceInput, ip: string): Promise<DeviceReply> {
   const key = normaliseKey(input.key);
   const machineId = str(input.machine_id, 64);
   if (!key || !machineId) return reply(400, "invalid", "A licence key and a computer id are required.");
-  const license = await prisma.license.findUnique({ where: { key } });
+  const license = await prisma.license.findUnique({ where: { key }, include: LICENSE_INCLUDE });
   if (!license) return reply(404, "invalid", "Unknown licence key.");
   const system = await prisma.system.findUnique({ where: { licenseId_machineId: { licenseId: license.id, machineId } } });
   if (!system) return reply(200, "ok", "This computer was not registered.");

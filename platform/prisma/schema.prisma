@@ -7,12 +7,48 @@ datasource db {
   provider = "postgresql"
 }
 
-/// A serial key sold or issued for one product. Several computers may share it (maxSeats).
+/// A piece of software licensed here. `slug` is what the program sends as `product` when it
+/// activates, so a key issued for one software is refused by another.
+model Product {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  name      String
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  licenses License[]
+
+  @@map("products")
+}
+
+/// Who a licence is issued to: a company, studio or person. One customer can hold licences
+/// for several softwares.
+model Customer {
+  id        String   @id @default(cuid())
+  name      String
+  email     String?
+  phone     String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  licenses License[]
+
+  @@index([name])
+  @@map("customers")
+}
+
+/// A serial key issued to one customer for one software. Several computers may share it (maxSeats).
 model License {
   id          String    @id @default(cuid())
   key         String    @unique
-  product     String    @default("monitoring-application")
-  label       String
+  productId   String
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
+  customerId  String
+  customer    Customer  @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  /// Optional reference shown next to the customer: site, studio, invoice number.
+  label       String?
   notes       String?
   /// active | locked | revoked
   status      String    @default("active")
@@ -26,6 +62,8 @@ model License {
   events  Event[]
 
   @@index([status])
+  @@index([productId])
+  @@index([customerId])
   @@map("licenses")
 }
 
@@ -57,7 +95,7 @@ model Event {
   licenseId String?
   license   License? @relation(fields: [licenseId], references: [id], onDelete: SetNull)
   systemId  String?
-  /// created | activated | deactivated | locked | unlocked | revoked | removed | refused | expired
+  /// created | updated | activated | deactivated | locked | unlocked | revoked | removed | refused | deleted | customer | software
   kind      String
   detail    String?
   ip        String?
