@@ -30,10 +30,36 @@ export function wantsJson(request: Request): boolean {
   return type.includes("application/json") || (accept.includes("application/json") && !accept.includes("text/html"));
 }
 
+/**
+ * The origin the browser used. Behind Railway's proxy `request.url` in a route handler is the
+ * server's own listen address (https://localhost:8080), so a redirect built from it leaves the site.
+ * Prefer the forwarded headers the proxy sets, then the Host header, then `request.url`.
+ */
+export function publicOrigin(request: Request): string {
+  const first = (name: string) => request.headers.get(name)?.split(",")[0]?.trim() || "";
+  const host = first("x-forwarded-host") || first("host");
+  if (!host) return new URL(request.url).origin;
+  const local = /^(localhost|127\.0\.0\.1|\[::1\])(:|$)/.test(host);
+  const proto = first("x-forwarded-proto") || (local ? "http" : "https");
+  return `${proto}://${host}`;
+}
+
+/** Redirect to a path on this site (303 by default, so a form POST becomes a GET). */
+export function redirectTo(request: Request, location: string, status = 303) {
+  return NextResponse.redirect(new URL(location, publicOrigin(request)), status);
+}
+
+/** Only same-site paths are allowed as a post-login destination. */
+export function safePath(value: unknown, fallback = "/"): string {
+  return typeof value === "string" && value.startsWith("/") && !value.startsWith("//") && !value.startsWith("/\\")
+    ? value
+    : fallback;
+}
+
 /** Admin endpoints: JSON for API callers, a redirect back to the page for HTML forms. */
 export function done(request: Request, location: string, payload: Record<string, unknown> = { ok: true }, status = 200) {
   if (wantsJson(request)) return NextResponse.json(payload, { status });
-  return NextResponse.redirect(new URL(location, request.url), 303);
+  return redirectTo(request, location);
 }
 
 /** A small in-memory limiter: per key, `max` hits per `windowMs`. Per instance, which is enough here. */

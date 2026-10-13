@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { clientIp, makeLimiter, readBody, wantsJson } from "@/lib/request";
+import { clientIp, makeLimiter, readBody, redirectTo, safePath, wantsJson } from "@/lib/request";
 import { SESSION_COOKIE, createSessionToken, safeEqual, sessionCookieOptions } from "@/lib/session";
 
 export const runtime = "nodejs";
@@ -14,18 +14,18 @@ export async function POST(request: Request) {
   const ip = clientIp(request);
   const body = await readBody(request);
   const password = typeof body.password === "string" ? body.password : "";
-  const next = typeof body.next === "string" && body.next.startsWith("/") ? body.next : "/";
+  const next = safePath(body.next);
   const fail = (message: string, status: number) =>
     wantsJson(request)
       ? NextResponse.json({ error: message }, { status })
-      : NextResponse.redirect(new URL(`/login?error=${encodeURIComponent(message)}`, request.url), 303);
+      : redirectTo(request, `/login?error=${encodeURIComponent(message)}`);
 
   if (limited(ip)) return fail("Too many attempts. Try again in a few minutes.", 429);
   if (!safeEqual(password, expected)) return fail("Wrong password", 401);
 
   const response = wantsJson(request)
     ? NextResponse.json({ ok: true })
-    : NextResponse.redirect(new URL(next, request.url), 303);
+    : redirectTo(request, next);
   response.cookies.set(SESSION_COOKIE, await createSessionToken(), sessionCookieOptions);
   return response;
 }
