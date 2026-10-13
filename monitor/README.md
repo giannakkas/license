@@ -82,6 +82,18 @@ The result is `monitor\dist\BarpiMonitor.exe`. The script fetches `libmpv-2.dll`
 the mpv Windows builds on GitHub (zhongfly/mpv-winbuild, falling back to
 shinchiro/mpv-winbuild-cmake); pass `-MpvArchiveUrl` to pin a particular archive.
 
+**On Linux (cross-build with Wine)**, when no Windows machine or runner is available:
+
+```bash
+sudo apt install wine64 p7zip-full gcc-mingw-w64-x86-64
+monitor/build-wine.sh        # result: monitor/build-wine/dist/BarpiMonitor.exe
+```
+
+It runs the Windows Python and PyInstaller under Wine, builds a stub for the Windows
+system ICU library that Qt links against (Wine has none; the stub is not shipped), and
+finishes by running the exe's own `--self-test` under Wine. The output is the same bundle
+the Windows build produces.
+
 ## Files
 
 | | |
