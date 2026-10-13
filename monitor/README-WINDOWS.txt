@@ -1,5 +1,5 @@
-Barpi Monitor
-=============
+Monitoring Application (BarpiMonitor.exe)
+==========================================
 
 A video monitor for the newsroom: several streams or files side by side, each with
 live audio level meters, a SILENCE alarm and a NO SIGNAL alarm.

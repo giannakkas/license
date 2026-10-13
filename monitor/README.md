@@ -1,4 +1,4 @@
-# Barpi Monitor
+# Barpi Monitor ("Monitoring Application")
 
 A Windows desktop program that plays several video sources at once for monitoring
 and shows **live audio level meters** for each one. It is a small multiviewer: streams
@@ -6,7 +6,7 @@ or files in a grid, one of them audible, every one metered, with SILENCE and NO 
 alarms.
 
 It lives in this repository because the newsroom asked for it, but it is independent
-of the Barpi web app: Python, Qt and libmpv, packaged as a single `BarpiMonitor.exe`.
+of the Barpi web app: Python, Qt and libmpv, packaged as a single `BarpiMonitor.exe`. The window is titled "Monitoring Application".
 
 ![Barpi Monitor](assets/screenshot.png)
 

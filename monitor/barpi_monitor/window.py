@@ -175,7 +175,7 @@ class MainWindow(QMainWindow):
         self.device_combo.currentIndexChanged.connect(self._audio_device_changed)
         tb2.addWidget(self.device_combo)
 
-    def _logo_label(self, height: int = 34) -> QLabel | None:
+    def _logo_label(self, height: int = 26) -> QLabel | None:
         """The owner's logo for the left of the toolbar, rendered sharp on high-DPI screens."""
         path = base_dir() / "assets" / "logo.png"
         pm = QPixmap(str(path))
@@ -186,7 +186,7 @@ class MainWindow(QMainWindow):
         scaled.setDevicePixelRatio(dpr)
         label = QLabel()
         label.setPixmap(scaled)
-        label.setContentsMargins(8, 3, 10, 3)
+        label.setContentsMargins(8, 2, 10, 2)
         label.setToolTip(APP_NAME)
         label.setStyleSheet("background: transparent;")
         return label
