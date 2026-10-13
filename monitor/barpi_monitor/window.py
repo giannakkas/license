@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+import html
 import logging
 import math
 import time
@@ -436,13 +437,19 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------------------ alarm log
 
-    def _log_line(self, text: str) -> None:
+    def _log_line(self, text: str, color: str | None = None) -> None:
         stamp = time.strftime("%Y-%m-%d %H:%M:%S")
-        self.log_view.appendPlainText(f"{stamp}  {text}")
+        body = html.escape(f"{stamp}  {text}")
+        if color:
+            body = f'<span style="color: {color}; font-weight: bold;">{body}</span>'
+        else:
+            body = f'<span style="color: {theme.MUTED};">{body}</span>'
+        self.log_view.appendHtml(body)
 
     def _log_alarm(self, tile: SourceTile, name: str, detail: str, started: bool) -> None:
         source = tile.source.display_name()
-        self._log_line(f"{'ALARM ' if started else 'clear '} {source}: {name}" + (f"  ({detail})" if detail else ""))
+        line = f"{'ALARM ' if started else 'clear '} {source}: {name}" + (f"  ({detail})" if detail else "")
+        self._log_line(line, theme.RED if started else theme.GREEN)
         if self.config.settings.alarm_log:
             path = self.config_path.parent / "alarms.csv"
             try:

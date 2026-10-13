@@ -494,9 +494,10 @@ class SourceTile(QFrame):
             self.alarm_changed.emit(self)
         top = self.alarm
         osd = top if top and top != "NO SIGNAL" else OSD_TEXT.get(self._state, "")
-        if osd != self._osd:
-            self._osd = osd
-            self.player.set_osd_text(osd)
+        osd_color = theme.RED if top else "#FFFFFF"
+        if (osd, osd_color) != self._osd:
+            self._osd = (osd, osd_color)
+            self.player.set_osd_text(osd, osd_color)
 
     def _on_blink(self) -> None:
         self._blink_on = not self._blink_on
@@ -544,8 +545,12 @@ class SourceTile(QFrame):
         self.status_label.setToolTip("\n".join(f"{n}: {d}" for n, d in self._alarms.items()) or self._detail)
 
     def _update_style(self) -> None:
+        background = theme.PANEL
+        name_color = theme.TEXT
         if self._alarms:
-            border = theme.RED if self._blink_on else "#5a1d1d"
+            border = theme.RED if self._blink_on else "#7a2323"
+            background = theme.ALARM_BG
+            name_color = theme.RED
         elif self._audible:
             border = theme.ACCENT
         elif self._selected:
@@ -553,7 +558,8 @@ class SourceTile(QFrame):
         else:
             border = theme.BORDER
         self.setStyleSheet(
-            f"QFrame#tile {{ background: {theme.PANEL}; border: 2px solid {border}; border-radius: 5px; }}")
+            f"QFrame#tile {{ background: {background}; border: 2px solid {border}; border-radius: 5px; }}")
+        self.name_label.setStyleSheet(f"color: {name_color}; border: none; background: transparent;")
 
     def mousePressEvent(self, event) -> None:  # noqa: N802
         if event.button() == Qt.LeftButton:

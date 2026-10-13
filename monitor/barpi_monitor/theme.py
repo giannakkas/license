@@ -17,6 +17,7 @@ ACCENT = "#3b82f6"      # audible / selected tile
 GREEN = "#22c55e"
 AMBER = "#f59e0b"
 RED = "#ef4444"
+ALARM_BG = "#2e1416"   # tile background while an alarm is active
 TRACK = "#252a35"
 
 

@@ -37,8 +37,9 @@ Meters (dBFS)
   Under each tile: EBU R128 momentary (M) and short-term (S) loudness in LUFS.
   5.1 and other multichannel sources show one bar per channel.
 
-Alarms (tile flashes red, named on the video, listed in the status bar and in
-the alarm log panel; every start and end is also written to alarms.csv)
+Alarms are red everywhere: the tile turns red and flashes, the alarm name is shown
+in red on the video, the status bar and the alarm log list it in red, and every
+start and end is written to alarms.csv
   NO SIGNAL   the stream dropped, errored or stalled; it reconnects by itself
   NO VIDEO    no picture can be read for 5 s
   FROZEN      the picture has not changed for 10 s

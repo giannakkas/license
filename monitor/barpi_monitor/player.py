@@ -293,7 +293,9 @@ class MonitorPlayer(QObject):
         """The output devices, as last read by the poll thread (see the ``devices`` signal)."""
         return list(self._devices)
 
-    def set_osd_text(self, text: str) -> None:
+    def set_osd_text(self, text: str, color: str = "#FFFFFF") -> None:
+        """Big centred text on the video (empty to clear); alarms pass red."""
+        self._set_async("osd-color", color)
         self._set_async("osd-msg1", text or "")
 
     def apply_settings(self, settings: Settings) -> None:
