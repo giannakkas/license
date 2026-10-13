@@ -31,7 +31,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
         ) : (
           <table>
             <thead>
-              <tr><th>Customer</th><th>Contact</th><th>Software</th><th>Licences</th><th>Computers</th><th>Last seen</th></tr>
+              <tr><th>Customer</th><th>Contact</th><th>Software</th><th>Licences</th><th>Computers</th><th>Last seen</th><th></th></tr>
             </thead>
             <tbody>
               {customers.map((c) => {
@@ -40,7 +40,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
                 const last = latestSeen(c.licenses.flatMap((l) => l.systems));
                 return (
                   <tr key={c.id}>
-                    <td><Link href={`/customers/${c.id}`} className="font-semibold hover:underline">{c.name}</Link></td>
+                    <td><Link href={`/customers/${c.id}`} className="font-semibold text-[#93c5fd] hover:underline">{c.name}</Link></td>
                     <td className="muted text-xs">{[c.email, c.phone].filter(Boolean).join(" · ") || "—"}</td>
                     <td className="text-xs">{softwares.length ? softwares.join(", ") : <span className="muted">—</span>}</td>
                     <td>
@@ -53,6 +53,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
                       {s.online > 0 && <span className="ml-2 text-xs text-[#4ade80]">{s.online} online</span>}
                     </td>
                     <td className={last && isOnline(last) ? "text-[#4ade80]" : "muted"}>{timeAgo(last)}</td>
+                    <td className="text-right"><Link href={`/customers/${c.id}`} className="btn btn-small">Edit</Link></td>
                   </tr>
                 );
               })}

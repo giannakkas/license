@@ -29,7 +29,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
         ) : (
           <table>
             <thead>
-              <tr><th>Software</th><th>Slug</th><th>Customers</th><th>Licences</th><th>Computers</th><th>Last seen</th></tr>
+              <tr><th>Software</th><th>Slug</th><th>Customers</th><th>Licences</th><th>Computers</th><th>Last seen</th><th></th></tr>
             </thead>
             <tbody>
               {products.map((p) => {
@@ -38,7 +38,10 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
                 const last = latestSeen(p.licenses.flatMap((l) => l.systems));
                 return (
                   <tr key={p.id}>
-                    <td><Link href={`/products/${p.id}`} className="font-semibold hover:underline">{p.name}</Link></td>
+                    <td>
+                      <Link href={`/products/${p.id}`} className="font-semibold text-[#93c5fd] hover:underline">{p.name}</Link>
+                      {p.notes && <div className="muted text-xs">{p.notes}</div>}
+                    </td>
                     <td className="mono text-xs">{p.slug}</td>
                     <td>{customers}</td>
                     <td>
@@ -50,6 +53,7 @@ export default async function ProductsPage({ searchParams }: { searchParams: Pro
                       {s.online > 0 && <span className="ml-2 text-xs text-[#4ade80]">{s.online} online</span>}
                     </td>
                     <td className={last && isOnline(last) ? "text-[#4ade80]" : "muted"}>{timeAgo(last)}</td>
+                    <td className="text-right"><Link href={`/products/${p.id}`} className="btn btn-small">Edit</Link></td>
                   </tr>
                 );
               })}

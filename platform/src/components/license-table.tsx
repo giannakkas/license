@@ -55,12 +55,12 @@ export function LicenseTable({
               </td>
               {showCustomer && (
                 <td>
-                  <Link href={`/customers/${l.customer.id}`} className="hover:underline">{l.customer.name}</Link>
+                  <Link href={`/customers/${l.customer.id}`} className="text-[#93c5fd] hover:underline">{l.customer.name}</Link>
                   {l.label && <div className="muted text-xs">{l.label}</div>}
                 </td>
               )}
               {showProduct && (
-                <td><Link href={`/products/${l.product.id}`} className="hover:underline">{l.product.name}</Link></td>
+                <td><Link href={`/products/${l.product.id}`} className="text-[#93c5fd] hover:underline">{l.product.name}</Link></td>
               )}
               <td><Badge status={effectiveStatus(l)} /></td>
               <td>

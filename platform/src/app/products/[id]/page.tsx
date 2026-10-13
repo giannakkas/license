@@ -66,7 +66,7 @@ export default async function ProductPage({
           <NewLicenseForm products={products} customers={customers} productId={product.id} />
         </div>
         <div className="panel p-4">
-          <h2 className="mb-3 font-bold">Details</h2>
+          <h2 className="mb-3 font-bold">Edit software</h2>
           <form method="post" action={action} className="grid gap-2 text-sm">
             <input type="hidden" name="action" value="update" />
             <label className="flex flex-col gap-1">Name<input name="name" defaultValue={product.name} required /></label>
