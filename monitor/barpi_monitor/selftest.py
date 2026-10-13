@@ -4,18 +4,37 @@ Used by the CI build and handy on a new PC. Exit code 0 means every check passed
 """
 from __future__ import annotations
 
+import array
+import math
 import os
 import sys
+import tempfile
 import time
+import wave
 from pathlib import Path
 
 from . import APP_NAME, __version__
 from .levels import SILENCE_FLOOR, MeterBallistics, SilenceDetector, parse_astats
 
 # Two channels of 1 kHz sine: 0.5 full scale (-6.02 dBFS peak) and 0.25 (-12.04 dBFS peak).
-TEST_SOURCE = "av://lavfi:aevalsrc=0.5*sin(1000*2*PI*t)|0.25*sin(1000*2*PI*t):s=48000:d=5"
 EXPECTED_PEAKS = (-6.02, -12.04)
 TOLERANCE_DB = 0.4
+TONE_SECONDS = 6
+
+
+def write_test_tone(path: Path, seconds: float = TONE_SECONDS, rate: int = 48000) -> None:
+    """A stereo 16-bit WAV with a 1 kHz tone at 0.5 (left) and 0.25 (right) of full scale."""
+    samples = array.array("h")
+    step = 2 * math.pi * 1000 / rate
+    for i in range(int(seconds * rate)):
+        v = math.sin(i * step)
+        samples.append(int(round(v * 0.5 * 32767)))
+        samples.append(int(round(v * 0.25 * 32767)))
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(2)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(samples.tobytes())
 
 
 def run_self_test(log_path: Path | None = None) -> int:
@@ -77,18 +96,26 @@ def run_self_test(log_path: Path | None = None) -> int:
         probe.terminate()
         check("libmpv loads", True, str(version))
 
+        tone_dir = Path(tempfile.mkdtemp(prefix="barpi-monitor-"))
+        tone = tone_dir / "tone.wav"
+        write_test_tone(tone)
         collected: list[list[float]] = []
         states: list[str] = []
         player = MonitorPlayer(None, Settings(), headless=True)
         player.levels.connect(lambda snap: collected.append(list(snap.peaks)) if snap.has_audio else None)
         player.state.connect(lambda st, _d: states.append(st))
-        player.load(Source(name="test tone", url=TEST_SOURCE))
+        player.load(Source(name="test tone", url=str(tone)))
         deadline = time.monotonic() + 4.0
         while time.monotonic() < deadline:
             if app is not None:
                 app.processEvents()
             time.sleep(0.02)
         player.close()
+        try:
+            tone.unlink()
+            tone_dir.rmdir()
+        except OSError:
+            pass
         got = [max(p[i] for p in collected) for i in range(2)] if collected and all(len(p) == 2 for p in collected) else []
         ok = len(got) == 2 and all(abs(g - e) <= TOLERANCE_DB for g, e in zip(got, EXPECTED_PEAKS))
         check("meters read the test tone", ok,
