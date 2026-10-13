@@ -135,6 +135,9 @@ the Windows build produces.
 | `build.ps1` | local Windows build |
 | `../.github/workflows/build-monitor.yml` | CI build and release |
 
+The logo at the left of the toolbar is `assets/logo.png` (transparent PNG, any size; it is
+scaled to the bar). `tools/key_logo.py` cuts a logo out of a baked-in checkerboard background.
+
 Settings and sources: `%APPDATA%\BarpiMonitor\config.json`. Log: `monitor.log` next to it; alarms: `alarms.csv`.
 
 ## Troubleshooting

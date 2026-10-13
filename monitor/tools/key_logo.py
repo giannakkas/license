@@ -10,7 +10,6 @@ anti-aliased edge, with enclosed interiors filled (metallic shading inside lette
 not regions that look like checkerboard (letter counters). Everything else, including
 the drop shadow that darkened the checkerboard around the letters, is transparent.
 """
-"""
 import sys
 import numpy as np
 from PIL import Image
