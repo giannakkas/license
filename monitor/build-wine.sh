@@ -24,7 +24,7 @@ done
 # Note: Windows Python under Wine aborts when stdout is a file ("init_sys_streams"), so every
 # call below reads stdin from /dev/null and writes through a pipe.
 WPY="$WORK/py/python.exe"
-wpy() { wine "$WPY" "$@" </dev/null 2>&1; }
+wpy() { timeout "${BARPI_WINE_STEP_TIMEOUT:-1200}" wine "$WPY" "$@" </dev/null 2>&1; }
 
 echo "== Windows Python $PY_VER under Wine"
 [ -f "$WORK/dl/python-embed.zip" ] || curl -sSL -o "$WORK/dl/python-embed.zip" \
@@ -34,6 +34,7 @@ if [ ! -f "$WPY" ]; then
     sed -i 's/^#import site/import site/' "$WORK"/py/python3*._pth   # let pip and site-packages work
 fi
 wineboot --init >/dev/null 2>&1 || true
+wineserver -w   # let the prefix finish initialising before the first real process runs
 if ! wpy -m pip --version | grep -q '^pip'; then
     [ -f "$WORK/dl/get-pip.py" ] || curl -sSL -o "$WORK/dl/get-pip.py" https://bootstrap.pypa.io/get-pip.py
     wpy "$WORK/dl/get-pip.py" --no-warn-script-location | tail -1
@@ -83,7 +84,7 @@ rm -rf "$WORK/dist" "$WORK/build"
 
 echo "== self-test of the built exe (under Wine)"
 rm -f "$WORK/selftest/self-test.log"
-wine "$WORK/dist/BarpiMonitor.exe" --self-test --config "$(winepath -w "$WORK/selftest/config.json")" </dev/null >/dev/null 2>&1 || true
+timeout 600 wine "$WORK/dist/BarpiMonitor.exe" --self-test --config "$(winepath -w "$WORK/selftest/config.json")" </dev/null >/dev/null 2>&1 || true
 cat "$WORK/selftest/self-test.log"
 grep -q '^ALL PASSED' "$WORK/selftest/self-test.log"
 ls -la "$WORK/dist/BarpiMonitor.exe"
