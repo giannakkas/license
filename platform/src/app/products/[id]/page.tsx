@@ -151,15 +151,18 @@ export default async function ProductPage({
 
       <section className="panel p-4">
         <h2 className="mb-2 font-bold text-[#fca5a5]">Delete</h2>
-        {product.licenses.length > 0 ? (
-          <p className="muted text-sm">This software has licences. Delete them, or move them to another software, first.</p>
-        ) : (
-          <form method="post" action={action}>
-            <ConfirmButton className="btn btn-danger" message={`Delete software ${product.name}?`}>
-              <input type="hidden" name="action" value="delete" />Delete software
-            </ConfirmButton>
-          </form>
-        )}
+        <p className="muted mb-3 text-sm">
+          Deletes {product.name} together with its {s.licences} licence(s), {s.computers} registered computer(s) and{" "}
+          {product.releases.length} uploaded build(s). Programs on those licences stop at their next check-in. This cannot be undone.
+        </p>
+        <form method="post" action={action}>
+          <ConfirmButton
+            className="btn btn-danger"
+            message={`Delete ${product.name} with its ${s.licences} licence(s), ${s.computers} computer(s) and ${product.releases.length} build(s)? This cannot be undone.`}
+          >
+            <input type="hidden" name="action" value="delete" />Delete software
+          </ConfirmButton>
+        </form>
       </section>
     </div>
   );

@@ -54,9 +54,9 @@ answer JSON instead of redirecting. All need the session cookie from `POST /api/
 | `GET /download/:slug` · `GET /download/:slug/:release` | **public**: the latest build of a software, or one specific build |
 | `POST /api/admin/systems/:id` | `action = lock \| unlock \| remove`, `message` |
 | `POST /api/admin/products` | `name`, `slug` (optional, derived from the name), `notes` |
-| `POST /api/admin/products/:id` | `action = update \| delete` (delete only without licences), `name, slug, notes` |
+| `POST /api/admin/products/:id` | `action = update \| delete` (delete takes its licences, computers and builds with it), `name, slug, notes` |
 | `POST /api/admin/customers` | `name`, `email`, `phone`, `notes` |
-| `POST /api/admin/customers/:id` | `action = update \| delete` (delete only without licences), `name, email, phone, notes` |
+| `POST /api/admin/customers/:id` | `action = update \| delete` (delete takes its licences and computers with it), `name, email, phone, notes` |
 
 ### Adding a software
 

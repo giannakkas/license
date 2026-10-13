@@ -83,15 +83,15 @@ export default async function CustomerPage({
 
       <section className="panel p-4">
         <h2 className="mb-2 font-bold text-[#fca5a5]">Delete</h2>
-        {customer.licenses.length > 0 ? (
-          <p className="muted text-sm">This customer has licences. Delete them, or move them to another customer, first.</p>
-        ) : (
-          <form method="post" action={action}>
-            <ConfirmButton className="btn btn-danger" message={`Delete customer ${customer.name}?`}>
-              <input type="hidden" name="action" value="delete" />Delete customer
-            </ConfirmButton>
-          </form>
-        )}
+        <p className="muted mb-3 text-sm">
+          Deletes {customer.name} together with its {s.licences} licence(s) and {s.computers} registered computer(s). Programs on those
+          licences stop at their next check-in. This cannot be undone.
+        </p>
+        <form method="post" action={action}>
+          <ConfirmButton className="btn btn-danger" message={`Delete ${customer.name} with its ${s.licences} licence(s) and ${s.computers} computer(s)? This cannot be undone.`}>
+            <input type="hidden" name="action" value="delete" />Delete customer
+          </ConfirmButton>
+        </form>
       </section>
     </div>
   );

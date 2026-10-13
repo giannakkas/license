@@ -4,7 +4,7 @@ import { clientIp, done, readBody } from "@/lib/request";
 
 export const runtime = "nodejs";
 
-/** Change a customer. Form field `action`: update (name, email, phone, notes) | delete (only without licences). */
+/** Change a customer. Form field `action`: update (name, email, phone, notes) | delete (with its licences and their computers). */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const body = await readBody(request);
@@ -30,11 +30,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       await prisma.event.create({ data: { kind: "customer", detail: `${name} updated`, ip } });
       return done(request, back);
     }
-    case "delete":
-      if (customer._count.licenses > 0) return fail(`${customer.name} still has ${customer._count.licenses} licence(s). Delete or move them first.`);
+    case "delete": {
+      const computers = await prisma.system.count({ where: { license: { customerId: id } } });
       await prisma.customer.delete({ where: { id } });
-      await prisma.event.create({ data: { kind: "customer", detail: `${customer.name} deleted`, ip } });
+      await prisma.event.create({
+        data: { kind: "customer", detail: `${customer.name} deleted with ${customer._count.licenses} licence(s) and ${computers} computer(s)`, ip },
+      });
       return done(request, "/customers");
+    }
     default:
       return fail("Unknown action");
   }
