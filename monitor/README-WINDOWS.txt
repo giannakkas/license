@@ -4,7 +4,15 @@ Monitoring Application (BarpiMonitor.exe)
 A video monitor for the newsroom: several streams or files side by side, each with
 live audio level meters, a SILENCE alarm and a NO SIGNAL alarm.
 
-Run BarpiMonitor.exe. Nothing is installed; settings are kept in
+Run BarpiMonitor.exe. On the first start it asks for the licence key
+(ONCUE-XXXXX-XXXXX-XXXXX-XXXXX) that was issued on player.oncue.cy; the key is
+checked online and this computer is registered to it. From then on the program
+checks in every 5 minutes. If the licence or this computer is locked on the
+platform, a red LOCKED screen replaces the video and playback stops until it is
+unlocked. Without internet the program keeps working for 3 days on its last
+answer. Help > Licence shows the status; Licence > Deactivate frees the seat.
+
+Nothing is installed; settings are kept in
 %APPDATA%\BarpiMonitor\config.json and a log in %APPDATA%\BarpiMonitor\monitor.log.
 
 First run: Windows SmartScreen may say "Windows protected your PC" because the

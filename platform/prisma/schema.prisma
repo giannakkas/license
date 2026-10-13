@@ -1,0 +1,69 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// A serial key sold or issued for one product. Several computers may share it (maxSeats).
+model License {
+  id          String    @id @default(cuid())
+  key         String    @unique
+  product     String    @default("monitoring-application")
+  label       String
+  notes       String?
+  /// active | locked | revoked
+  status      String    @default("active")
+  lockMessage String?
+  maxSeats    Int       @default(1)
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  systems System[]
+  events  Event[]
+
+  @@index([status])
+  @@map("licenses")
+}
+
+/// One computer activated against a licence. tokenHash is the SHA-256 of the activation token the program holds.
+model System {
+  id          String   @id @default(cuid())
+  licenseId   String
+  license     License  @relation(fields: [licenseId], references: [id], onDelete: Cascade)
+  machineId   String
+  hostname    String?
+  os          String?
+  appVersion  String?
+  ip          String?
+  /// active | locked
+  status      String   @default("active")
+  lockMessage String?
+  tokenHash   String
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+
+  @@unique([licenseId, machineId])
+  @@index([lastSeenAt(sort: Desc)])
+  @@map("systems")
+}
+
+/// Audit trail: who did what, and what the programs reported.
+model Event {
+  id        String   @id @default(cuid())
+  licenseId String?
+  license   License? @relation(fields: [licenseId], references: [id], onDelete: SetNull)
+  systemId  String?
+  /// created | activated | deactivated | locked | unlocked | revoked | removed | refused | expired
+  kind      String
+  detail    String?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt(sort: Desc)])
+  @@index([licenseId, createdAt(sort: Desc)])
+  @@map("events")
+}

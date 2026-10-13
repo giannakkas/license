@@ -11,11 +11,13 @@ from pathlib import Path
 from PySide6.QtCore import QByteArray, Qt, QTimer
 from PySide6.QtGui import QAction, QFont, QKeySequence, QPixmap
 from PySide6.QtWidgets import (QApplication, QComboBox, QDockWidget, QFileDialog, QGridLayout, QLabel, QMainWindow,
-                               QMessageBox, QPlainTextEdit, QSlider, QToolBar, QWidget)
+                               QMessageBox, QPlainTextEdit, QSlider, QStackedWidget, QToolBar, QWidget)
 
 from . import APP_NAME, __version__, theme
 from .config import Config, Source, guess_name, is_url
 from .dialogs import VIDEO_FILTER, SettingsDialog, SourceDialog
+from .license import USABLE, LicenseClient
+from .license_ui import ActivationDialog, LicenseDialog, LicenseMonitor, LockScreen
 from .main import base_dir
 from .tile import SourceTile
 
@@ -36,10 +38,13 @@ def auto_columns(n: int) -> int:
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, config: Config, config_path: Path):
+    def __init__(self, config: Config, config_path: Path, license_client: LicenseClient | None = None):
         super().__init__()
         self.config = config
         self.config_path = config_path
+        self.license_client = license_client
+        self.license_monitor: LicenseMonitor | None = None
+        self._locked = False
         self.tiles: list[SourceTile] = []
         self._selected: SourceTile | None = None
         self._maximized: SourceTile | None = None
@@ -49,12 +54,20 @@ class MainWindow(QMainWindow):
         self.resize(1280, 760)
         self.setAcceptDrops(True)
 
-        central = QWidget()
-        central.setStyleSheet(f"background: {theme.BG};")
-        self.grid = QGridLayout(central)
+        # The centre is either the grid of tiles or, while the licence forbids running, the lock screen.
+        self.stack = QStackedWidget()
+        self.grid_host = QWidget()
+        self.grid_host.setStyleSheet(f"background: {theme.BG};")
+        self.grid = QGridLayout(self.grid_host)
         self.grid.setContentsMargins(6, 6, 6, 6)
         self.grid.setSpacing(6)
-        self.setCentralWidget(central)
+        self.lock_screen = LockScreen()
+        self.lock_screen.check_again.connect(self._license_check_now)
+        self.lock_screen.enter_key.connect(self._license_enter_key)
+        self.stack.addWidget(self.grid_host)
+        self.stack.addWidget(self.lock_screen)
+        self.setCentralWidget(self.stack)
+        central = self.grid_host
         self.empty_label = QLabel(
             "No sources yet.\n\nAdd a stream (RTSP, SRT, UDP, RTMP, HLS, HTTP) with Ctrl+N,\n"
             "open video files with Ctrl+O, or drop files onto this window.", central)
@@ -141,7 +154,10 @@ class MainWindow(QMainWindow):
         self.act_top = act("On top", self._toggle_on_top, checkable=True, tip="Keep this window above others")
         tb.addSeparator()
         act("Settings…", self._open_settings, "Ctrl+,")
+        if self.license_client is not None:
+            act("Licence", self._open_license, tip="Licence status, change key, deactivate this computer")
         act("Help", self._about, "F1")
+        self._toolbars = [tb]
 
         self.addToolBarBreak()
         tb2 = QToolBar("Playback and audio")
@@ -175,6 +191,7 @@ class MainWindow(QMainWindow):
         self.device_combo.setToolTip("Which sound device plays the audible source")
         self.device_combo.currentIndexChanged.connect(self._audio_device_changed)
         tb2.addWidget(self.device_combo)
+        self._toolbars.append(tb2)
 
     def _logo_label(self, height: int = 26) -> QLabel | None:
         """The owner's logo for the left of the toolbar, rendered sharp on high-DPI screens."""
@@ -226,7 +243,7 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------ tiles
 
     def _create_tile(self, source: Source) -> SourceTile:
-        tile = SourceTile(source, self.config.settings, self.centralWidget())
+        tile = SourceTile(source, self.config.settings, self.grid_host)
         tile.player.devices.connect(lambda _d: self._populate_devices())
         tile.activated.connect(lambda t: self._select_tile(t, make_audible=True))
         tile.maximize_toggled.connect(self._toggle_maximize)
@@ -472,6 +489,71 @@ class MainWindow(QMainWindow):
         self.act_log.setChecked(bool(visible))
         self._save_soon()
 
+    # ------------------------------------------------------------------ licence
+
+    def on_license_status(self, status: str, message: str) -> None:
+        """Called by the LicenseMonitor (and at start-up) with the status to act on."""
+        if status in USABLE:
+            self.set_locked(False)
+        else:
+            self.set_locked(True, status, message)
+
+    def set_locked(self, locked: bool, status: str = "locked", message: str = "") -> None:
+        if locked:
+            client = self.license_client
+            self.lock_screen.show_status(status, message, client.state.machine_id if client else "",
+                                         client.state.server if client else "")
+            if not self._locked:
+                self._locked = True
+                for t in self.tiles:
+                    t.stop()
+                self._log_line(f"LOCKED: {message or status}", theme.RED)
+            self.stack.setCurrentWidget(self.lock_screen)
+            for tb in self._toolbars:
+                tb.setEnabled(False)
+            self.setWindowTitle(f"LOCKED — {APP_NAME}")
+        else:
+            if self._locked:
+                self._locked = False
+                for t in self.tiles:
+                    t.restart()
+                self._log_line("licence OK: unlocked", theme.GREEN)
+            self.stack.setCurrentWidget(self.grid_host)
+            for tb in self._toolbars:
+                tb.setEnabled(True)
+            self._update_status()
+
+    def _license_check_now(self) -> None:
+        if self.license_client is None:
+            return
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            self.license_client.check()
+        finally:
+            QApplication.restoreOverrideCursor()
+        if self.license_monitor is not None:
+            self.license_monitor.publish()
+        else:
+            self.on_license_status(*self.license_client.effective_status())
+
+    def _license_enter_key(self) -> None:
+        if self.license_client is None:
+            return
+        ActivationDialog(self.license_client, parent=self).exec()
+        if self.license_monitor is not None:
+            self.license_monitor.publish()
+        else:
+            self.on_license_status(*self.license_client.effective_status())
+
+    def _open_license(self) -> None:
+        if self.license_client is None:
+            return
+        LicenseDialog(self.license_client, self.license_monitor, parent=self).exec()
+        if self.license_monitor is not None:
+            self.license_monitor.publish()
+        else:
+            self.on_license_status(*self.license_client.effective_status())
+
     # ------------------------------------------------------------------ window
 
     def _toggle_fullscreen(self, checked: bool) -> None:
@@ -538,6 +620,8 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event) -> None:  # noqa: N802
         self.config.geometry = bytes(self.saveGeometry().toBase64()).decode("ascii")
         self.save_config()
+        if self.license_monitor is not None:
+            self.license_monitor.stop()
         for t in self.tiles:
             t.close_player()
         super().closeEvent(event)
@@ -555,11 +639,12 @@ class MainWindow(QMainWindow):
         if alarms:
             self.status_right.setText("⚠ " + "   ".join(alarms[:4]) + ("  …" if len(alarms) > 4 else ""))
             self.status_right.setStyleSheet(f"color: {theme.RED}; font-weight: bold;")
-            self.setWindowTitle(f"⚠ {count} alarm{'s' if count != 1 else ''} — {APP_NAME}")
+            title = f"⚠ {count} alarm{'s' if count != 1 else ''} — {APP_NAME}"
         else:
             self.status_right.setText("all sources OK" if n else "")
             self.status_right.setStyleSheet(f"color: {theme.MUTED};")
-            self.setWindowTitle(APP_NAME)
+            title = APP_NAME
+        self.setWindowTitle(f"LOCKED — {APP_NAME}" if self._locked else title)
 
     def _maybe_beep(self) -> None:
         if self.config.settings.beep_on_alarm and any(t.alarms for t in self.tiles):

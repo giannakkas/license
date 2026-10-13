@@ -39,6 +39,17 @@ installed. The exe is not code-signed, so SmartScreen will ask once: *More info 
 | Status | Resolution, frame rate, codecs, sample rate, layout and bitrate under each tile; alarm list in the status bar and window title |
 | Persistence | Sources, layout, volume, device and window position are saved per user |
 
+## Licensing
+
+The program needs a serial key from the licensing platform in `../platform`
+(https://player.oncue.cy). `barpi_monitor/license.py` activates the key with a hashed
+computer id, stores the activation token in `license.json` next to the config, and checks
+in every few minutes (`LicenseMonitor` in `license_ui.py`). The platform answers *active*
+or *locked* with a message; *revoked*, *expired* and *unknown* send the operator back to the
+activation dialog. While not allowed to run, the window shows a lock screen and every tile
+is stopped. If the platform is unreachable the last answer holds for 72 hours.
+`--license-server URL` (or `BARPI_LICENSE_SERVER`) points a build at another platform.
+
 ## How the alarms work
 
 Audio alarms come from the same per-frame peak, RMS and loudness figures as the meters

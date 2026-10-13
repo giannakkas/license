@@ -54,6 +54,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("sources", nargs="*", help="stream URLs or video files to add on start-up")
     parser.add_argument("-c", "--config", help="path to the config file (default: per-user app data)")
     parser.add_argument("--self-test", action="store_true", help="check libmpv, metering and Qt, then exit")
+    parser.add_argument("--license-server", help="licensing platform URL (default: https://player.oncue.cy, "
+                                                 "or BARPI_LICENSE_SERVER)")
     parser.add_argument("--version", action="store_true")
     return parser.parse_args(argv)
 
@@ -110,12 +112,28 @@ def main(argv: list[str] | None = None) -> int:
     for item in args.sources:
         config.sources.append(Source(name=guess_name(item), url=item, loop=not is_url(item)))
 
+    from .license import NEEDS_ACTIVATION, LicenseClient, license_path, server_override
+    from .license_ui import ActivationDialog, LicenseMonitor
     from .window import MainWindow
 
     def excepthook(exc_type, exc, tb):
         log.error("unhandled exception", exc_info=(exc_type, exc, tb))
     sys.excepthook = excepthook
 
-    win = MainWindow(config, cfg_path)
+    # Licence: a key is needed before the first start; afterwards the platform is asked
+    # every few minutes and can lock this computer.
+    client = LicenseClient(license_path(cfg_path.parent), server=args.license_server or server_override())
+    status, message = client.effective_status()
+    log.info("licence status at start: %s %s", status, message)
+    if status in NEEDS_ACTIVATION:
+        if not ActivationDialog(client, message=message).exec():
+            return 0
+
+    win = MainWindow(config, cfg_path, license_client=client)
+    monitor = LicenseMonitor(client, parent=win)
+    monitor.status_changed.connect(win.on_license_status)
+    win.license_monitor = monitor
+    win.on_license_status(*client.effective_status())
+    monitor.start()
     win.show()
     return app.exec()
