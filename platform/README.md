@@ -1,4 +1,4 @@
-# Licensing platform (player.oncue.cy)
+# Licensing platform (license.oncue.cy)
 
 Serial keys for every software you ship, kept per **customer** and per **software**:
 register each software (its *slug* is what the program sends as `product`), keep the
@@ -89,7 +89,7 @@ new program builds, so keep it safe.
 ## Downloads
 
 Each software has a Downloads panel: upload the exe or installer with its version, and give
-customers the public link `https://player.oncue.cy/download/<slug>` (always the latest build;
+customers the public link `https://license.oncue.cy/download/<slug>` (always the latest build;
 `/download/<slug>/<release id>` for a specific one). Files live on the downloads volume
 (`DOWNLOADS_DIR`, a Railway volume mounted at `/data`); the database keeps version, size,
 SHA-256 and a download counter. Uploads stream straight to disk, so large builds are fine.
@@ -115,7 +115,7 @@ To point a program at it: `BarpiMonitor.exe --license-server http://localhost:30
 | `PLATFORM_ADMIN_PASSWORD` | The admin password |
 | `PLATFORM_SESSION_SECRET` | Signs the admin cookie (16+ chars) |
 | `LICENSE_SIGNING_SECRET` | Signs activation tokens (16+ chars); changing it makes every computer activate again |
-| `PUBLIC_URL` | `https://player.oncue.cy` |
+| `PUBLIC_URL` | `https://license.oncue.cy` |
 | `LICENSE_CHECK_INTERVAL` | Optional; seconds between check-ins (default 300) |
 | `LICENSE_FILE_PRIVATE_KEY` | RSA-2048 private key (base64 PKCS#8 DER) that signs offline licence files; from `deploy/keygen.mjs` |
 | `DOWNLOADS_DIR` | Where uploaded builds are stored (`/data/downloads` on the Railway volume; `./data/downloads` locally) |
@@ -129,16 +129,16 @@ migrations, then starts Next) and health check `/api/health`. Railway no longer 
 `railway.json` config-as-code, so those three settings live on the service itself; the
 `railway.json` here is kept only as documentation of them.
 
-Custom domain `player.oncue.cy` → Cloudflare zone `oncue.cy`, two records, both required:
+Custom domain `license.oncue.cy` → Cloudflare zone `oncue.cy`, two records, both required:
 
 | Type | Name | Value | Proxy |
 | --- | --- | --- | --- |
-| CNAME | `player` | the target Railway shows for the domain (`*.up.railway.app`) | DNS only (grey cloud) |
-| TXT | `_railway-verify.player` | the `railway-verify=…` token Railway shows | n/a |
+| CNAME | `license` | the target Railway shows for the domain (`*.up.railway.app`) | DNS only (grey cloud) |
+| TXT | `_railway-verify.license` | the `railway-verify=…` token Railway shows | n/a |
 
 The certificate issues a few minutes after both records are live (see the main README's
 "Cloudflare DNS" section for why the TXT matters). The target and token change if the
-service is ever recreated: `railway domain status player.oncue.cy --service player`.
+service is ever recreated: `railway domain status license.oncue.cy --service player`.
 
 **Scripted** (Railway API token + Cloudflare token with Zone.DNS edit on `oncue.cy`):
 
@@ -153,12 +153,12 @@ a terminal without a browser):
 railway link --project 8fefc010-a153-4a9a-8a4c-be4df23a00a4 --environment production
 railway add --database postgres
 railway add --service player --variables 'DATABASE_URL=${{Postgres.DATABASE_URL}}' \
-  --variables PUBLIC_URL=https://player.oncue.cy --variables PLATFORM_ADMIN_PASSWORD=… \
+  --variables PUBLIC_URL=https://license.oncue.cy --variables PLATFORM_ADMIN_PASSWORD=… \
   --variables PLATFORM_SESSION_SECRET=… --variables LICENSE_SIGNING_SECRET=…
 railway api --var serviceId=… --var environmentId=… --var input='{"rootDirectory":"/platform","startCommand":"npm run start:prod","healthcheckPath":"/api/health"}' \
   'mutation($serviceId: String!, $environmentId: String!, $input: ServiceInstanceUpdateInput!) { serviceInstanceUpdate(serviceId: $serviceId, environmentId: $environmentId, input: $input) }'
 railway service source connect --repo giannakkas/barpi --branch main --service player
-railway domain player.oncue.cy --service player      # prints the CNAME target and the TXT token
+railway domain license.oncue.cy --service player      # prints the CNAME target and the TXT token
 ```
 
 The service deploys from branch `claude/barpi-monitor` until that branch is merged; then

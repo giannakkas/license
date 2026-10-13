@@ -5,7 +5,7 @@ A video monitor for the newsroom: several streams or files side by side, each wi
 live audio level meters, a SILENCE alarm and a NO SIGNAL alarm.
 
 Run BarpiMonitor.exe. On the first start it asks for the licence key
-(ONCUE-XXXXX-XXXXX-XXXXX-XXXXX) that was issued on player.oncue.cy; the key is
+(ONCUE-XXXXX-XXXXX-XXXXX-XXXXX) that was issued on license.oncue.cy; the key is
 checked online and this computer is registered to it. From then on the program
 checks in every 5 minutes. If the licence or this computer is locked on the
 platform, a red LOCKED screen replaces the video and playback stops until it is
@@ -14,7 +14,7 @@ answer. Help > Licence shows the status; Licence > Deactivate frees the seat.
 
 Computers with no internet at all use an offline licence file instead: send the
 Computer ID shown on the activation screen (Copy ID) to your supplier, who issues
-a .lic file for that computer on player.oncue.cy. Copy it over by USB and click
+a .lic file for that computer on license.oncue.cy. Copy it over by USB and click
 "Import licence file...". The file works on that computer only, until the expiry
 date printed in Help > Licence; ask for a new file to extend it. Setting the
 computer's clock back to before the program last ran locks it until the clock

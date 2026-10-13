@@ -3,7 +3,7 @@ import { fileDownload } from "@/lib/releases";
 
 export const runtime = "nodejs";
 
-/** Public: the latest build of a software, e.g. https://player.oncue.cy/download/monitoring-application */
+/** Public: the latest build of a software, e.g. https://license.oncue.cy/download/monitoring-application */
 export async function GET(_request: Request, { params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const product = await prisma.product.findUnique({ where: { slug }, include: { releases: { orderBy: { createdAt: "desc" }, take: 1 } } });

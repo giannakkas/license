@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create (or update) the licensing platform on Railway and point player.oncue.cy at it.
+"""Create (or update) the licensing platform on Railway and point license.oncue.cy at it.
 
     RAILWAY_API_TOKEN=...  CLOUDFLARE_API_TOKEN=...  PLATFORM_ADMIN_PASSWORD=...  python platform/deploy/provision.py
     python platform/deploy/provision.py --dry-run      # show the plan without changing anything
@@ -10,7 +10,7 @@ What it does, step by step (each step is idempotent, so it can be re-run):
   3. sets its root directory to platform/, the start command and the health check
   4. sets the variables: DATABASE_URL (the project's own Postgres),
      PLATFORM_ADMIN_PASSWORD, PLATFORM_SESSION_SECRET, LICENSE_SIGNING_SECRET, PUBLIC_URL
-  5. adds the custom domain player.oncue.cy and reads back the DNS records Railway wants
+  5. adds the custom domain license.oncue.cy and reads back the DNS records Railway wants
   6. creates those records in the Cloudflare zone oncue.cy (CNAME with the proxy OFF, plus
      the _railway-verify TXT: see the README's "Cloudflare DNS" section for why both matter)
   7. triggers a deployment
@@ -23,7 +23,7 @@ Environment:
   LICENSE_SIGNING_SECRET   optional; generated and kept on Railway if absent
   RAILWAY_PROJECT_ID       optional (default: barpi's project id)
   RAILWAY_ENVIRONMENT      optional (default: production)
-  DOMAIN                   optional (default: player.oncue.cy)
+  DOMAIN                   optional (default: license.oncue.cy)
 
 The Railway part uses Railway's public GraphQL API; field names follow its published schema
 but were written without a token to try them against, so if a mutation is refused the error
@@ -72,7 +72,7 @@ def main() -> int:
     env = os.environ
     project_id = env.get("RAILWAY_PROJECT_ID", DEFAULT_PROJECT)
     env_name = env.get("RAILWAY_ENVIRONMENT", "production")
-    domain = env.get("DOMAIN", "player.oncue.cy")
+    domain = env.get("DOMAIN", "license.oncue.cy")
     rtoken, cftoken = env.get("RAILWAY_API_TOKEN"), env.get("CLOUDFLARE_API_TOKEN")
     admin_pw = env.get("PLATFORM_ADMIN_PASSWORD")
     missing = [n for n, v in (("RAILWAY_API_TOKEN", rtoken), ("CLOUDFLARE_API_TOKEN", cftoken),

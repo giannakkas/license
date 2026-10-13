@@ -10,7 +10,7 @@ export async function Header() {
         <Link href="/" className="flex items-center gap-3">
           <span className="inline-block h-6 w-6 rounded bg-[#3b82f6]" aria-hidden />
           <span className="font-bold">OnCue Licensing</span>
-          <span className="muted text-sm">player.oncue.cy</span>
+          <span className="muted text-sm">license.oncue.cy</span>
         </Link>
         {signedIn && (
           <nav className="ml-auto flex items-center gap-4 text-sm">

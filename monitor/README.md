@@ -42,7 +42,7 @@ installed. The exe is not code-signed, so SmartScreen will ask once: *More info 
 ## Licensing
 
 The program needs a serial key from the licensing platform in `../platform`
-(https://player.oncue.cy). `barpi_monitor/license.py` activates the key with a hashed
+(https://license.oncue.cy). `barpi_monitor/license.py` activates the key with a hashed
 computer id, stores the activation token in `license.json` next to the config, and checks
 in every few minutes (`LicenseMonitor` in `license_ui.py`). The platform answers *active*
 or *locked* with a message; *revoked*, *expired* and *unknown* send the operator back to the

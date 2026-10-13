@@ -43,7 +43,7 @@ export default async function ProductPage({
   if (!product) notFound();
   const s = summarise(product.licenses);
   const action = `/api/admin/products/${product.id}`;
-  const publicUrl = (process.env.PUBLIC_URL || "https://player.oncue.cy").replace(/\/$/, "");
+  const publicUrl = (process.env.PUBLIC_URL || "https://license.oncue.cy").replace(/\/$/, "");
   const downloadUrl = `${publicUrl}/download/${product.slug}`;
 
   return (

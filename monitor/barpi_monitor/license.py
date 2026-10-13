@@ -1,6 +1,6 @@
 """Serial-key licensing: activation, periodic check-ins and remote lock.
 
-The program is tied to a licence key on the licensing platform (player.oncue.cy). On first
+The program is tied to a licence key on the licensing platform (license.oncue.cy). On first
 start the operator enters the key; the platform records this machine against it and hands
 back an activation token. From then on the program checks in every few minutes and the
 platform can answer *locked* (the operator sees a lock screen and playback stops), *revoked*
@@ -38,7 +38,9 @@ from . import __version__
 
 log = logging.getLogger(__name__)
 
-DEFAULT_SERVER = "https://player.oncue.cy"
+DEFAULT_SERVER = "https://license.oncue.cy"
+# Earlier builds pointed at these; a saved state naming one is moved to DEFAULT_SERVER on load.
+LEGACY_SERVERS = {"https://player.oncue.cy"}
 PRODUCT = "monitoring-application"
 DEFAULT_INTERVAL_S = 300          # check-in period unless the server says otherwise
 OFFLINE_GRACE_S = 72 * 3600       # how long the last good answer stays valid without a server
@@ -158,7 +160,7 @@ class LicenseState:
             return cls()
         names = {f.name for f in fields(cls)}
         state = cls(**{k: v for k, v in raw.items() if k in names})
-        if not state.server:
+        if not state.server or state.server.rstrip("/") in LEGACY_SERVERS:
             state.server = DEFAULT_SERVER
         return state
 
@@ -457,5 +459,5 @@ def license_path(config_dir: Path) -> Path:
 
 
 def server_override() -> str | None:
-    """``BARPI_LICENSE_SERVER`` lets a test or a staging platform stand in for player.oncue.cy."""
+    """``BARPI_LICENSE_SERVER`` lets a test or a staging platform stand in for license.oncue.cy."""
     return os.environ.get("BARPI_LICENSE_SERVER") or None

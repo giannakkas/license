@@ -54,7 +54,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("sources", nargs="*", help="stream URLs or video files to add on start-up")
     parser.add_argument("-c", "--config", help="path to the config file (default: per-user app data)")
     parser.add_argument("--self-test", action="store_true", help="check libmpv, metering and Qt, then exit")
-    parser.add_argument("--license-server", help="licensing platform URL (default: https://player.oncue.cy, "
+    parser.add_argument("--license-server", help="licensing platform URL (default: https://license.oncue.cy, "
                                                  "or BARPI_LICENSE_SERVER)")
     parser.add_argument("--version", action="store_true")
     return parser.parse_args(argv)

@@ -253,3 +253,11 @@ def test_import_file_rejections(client, tmp_path, signer):
     c.import_file(signer(tmp_path / "ok.lic", c.state.machine_id))
     c.activate(KEY)
     assert c.state.mode == L.MODE_ONLINE and c.state.file_expires_at == ""
+
+
+def test_legacy_server_is_moved_to_the_new_platform(tmp_path):
+    path = tmp_path / "license.json"
+    path.write_text(json.dumps({"key": KEY, "token": "tok", "status": "active", "server": "https://player.oncue.cy"}))
+    assert LicenseState.load(path).server == L.DEFAULT_SERVER == "https://license.oncue.cy"
+    path.write_text(json.dumps({"server": "https://platform.test"}))
+    assert LicenseState.load(path).server == "https://platform.test", "a custom server is kept"
