@@ -5,10 +5,10 @@
     python platform/deploy/provision.py --dry-run      # show the plan without changing anything
 
 What it does, step by step (each step is idempotent, so it can be re-run):
-  1. finds the Railway project (default: the barpi project) and its production environment
+  1. finds the Railway project (default: the "licensing" project) and its production environment
   2. creates a service named "player" from github.com/giannakkas/barpi, branch main, if missing
-  3. sets its root directory to platform/ and its config file to platform/railway.json
-  4. sets the variables: DATABASE_URL (the project's Postgres, schema "licensing"),
+  3. sets its root directory to platform/, the start command and the health check
+  4. sets the variables: DATABASE_URL (the project's own Postgres),
      PLATFORM_ADMIN_PASSWORD, PLATFORM_SESSION_SECRET, LICENSE_SIGNING_SECRET, PUBLIC_URL
   5. adds the custom domain player.oncue.cy and reads back the DNS records Railway wants
   6. creates those records in the Cloudflare zone oncue.cy (CNAME with the proxy OFF, plus
@@ -40,7 +40,7 @@ from urllib import error, request
 
 RAILWAY_API = "https://backboard.railway.com/graphql/v2"
 CF_API = "https://api.cloudflare.com/client/v4"
-DEFAULT_PROJECT = "c7e3e820-6bd0-49be-9a75-7bf07e971192"
+DEFAULT_PROJECT = "8fefc010-a153-4a9a-8a4c-be4df23a00a4"   # the "licensing" project
 REPO = "giannakkas/barpi"
 BRANCH = "main"
 SERVICE = "player"
@@ -80,7 +80,7 @@ def main() -> int:
     if missing and not args.dry_run:
         print("missing:", ", ".join(missing)); return 2
     variables = {
-        "DATABASE_URL": "${{Postgres.DATABASE_URL}}?schema=licensing",
+        "DATABASE_URL": "${{Postgres.DATABASE_URL}}",
         "PLATFORM_ADMIN_PASSWORD": admin_pw or "<set>",
         "PLATFORM_SESSION_SECRET": env.get("PLATFORM_SESSION_SECRET") or secrets.token_urlsafe(32),
         "LICENSE_SIGNING_SECRET": env.get("LICENSE_SIGNING_SECRET") or secrets.token_urlsafe(32),
@@ -112,12 +112,14 @@ def main() -> int:
                    {"input": {"projectId": project_id, "name": SERVICE, "source": {"repo": REPO}, "branch": BRANCH}})
         service_id = data["serviceCreate"]["id"]; print(f"2. created service {SERVICE!r} ({service_id})")
 
-    # 3. root directory + config file
+    # 3. root directory, start command and health check. (Railway rejects railwayConfigFile now:
+    #    config-as-code is deprecated, so these are set on the service instance directly.)
     gql(rtoken, """mutation($serviceId: String!, $environmentId: String!, $input: ServiceInstanceUpdateInput!) {
         serviceInstanceUpdate(serviceId: $serviceId, environmentId: $environmentId, input: $input) }""",
         {"serviceId": service_id, "environmentId": env_id,
-         "input": {"rootDirectory": "platform", "railwayConfigFile": "platform/railway.json", "branch": BRANCH}})
-    print("3. root directory platform/, config platform/railway.json")
+         "input": {"rootDirectory": "/platform", "startCommand": "npm run start:prod",
+                   "healthcheckPath": "/api/health", "healthcheckTimeout": 120}})
+    print("3. root directory /platform, start command npm run start:prod, health check /api/health")
 
     # 4. variables
     gql(rtoken, """mutation($input: VariableCollectionUpsertInput!) { variableCollectionUpsert(input: $input) }""",

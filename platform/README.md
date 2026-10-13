@@ -69,37 +69,45 @@ To point a program at it: `BarpiMonitor.exe --license-server http://localhost:30
 
 ## Deployment (Railway + Cloudflare)
 
-The platform is a second service in the existing Railway project, built from this
-repository with root directory `platform`.
+The platform runs in its **own Railway project, `licensing`** (id `8fefc010-a153-4a9a-8a4c-be4df23a00a4`),
+separate from the newsroom app: a `Postgres` service and a `player` service built from this
+repository with root directory `/platform`, start command `npm run start:prod` (applies the
+migrations, then starts Next) and health check `/api/health`. Railway no longer accepts
+`railway.json` config-as-code, so those three settings live on the service itself; the
+`railway.json` here is kept only as documentation of them.
 
-**Scripted.** With a Railway API token and a Cloudflare API token (Zone.DNS edit on
-`oncue.cy`) in the environment:
+Custom domain `player.oncue.cy` → Cloudflare zone `oncue.cy`, two records, both required:
+
+| Type | Name | Value | Proxy |
+| --- | --- | --- | --- |
+| CNAME | `player` | the target Railway shows for the domain (`*.up.railway.app`) | DNS only (grey cloud) |
+| TXT | `_railway-verify.player` | the `railway-verify=…` token Railway shows | n/a |
+
+The certificate issues a few minutes after both records are live (see the main README's
+"Cloudflare DNS" section for why the TXT matters). The target and token change if the
+service is ever recreated: `railway domain status player.oncue.cy --service player`.
+
+**Scripted** (Railway API token + Cloudflare token with Zone.DNS edit on `oncue.cy`):
 
 ```bash
 RAILWAY_API_TOKEN=… CLOUDFLARE_API_TOKEN=… PLATFORM_ADMIN_PASSWORD=… python platform/deploy/provision.py
 ```
 
-`deploy/provision.py` creates the `player` service, sets its root directory, config file
-and variables, attaches `player.oncue.cy`, creates the CNAME and the `_railway-verify`
-TXT in Cloudflare (proxy off, as the main README explains), and triggers a deployment.
-It was written without a token to try it against, so if Railway refuses a call it prints
-the error and the manual steps below cover the rest.
+**With the Railway CLI** (what was actually used; `railway login --browserless` works from
+a terminal without a browser):
 
-**By hand.**
+```bash
+railway link --project 8fefc010-a153-4a9a-8a4c-be4df23a00a4 --environment production
+railway add --database postgres
+railway add --service player --variables 'DATABASE_URL=${{Postgres.DATABASE_URL}}' \
+  --variables PUBLIC_URL=https://player.oncue.cy --variables PLATFORM_ADMIN_PASSWORD=… \
+  --variables PLATFORM_SESSION_SECRET=… --variables LICENSE_SIGNING_SECRET=…
+railway api --var serviceId=… --var environmentId=… --var input='{"rootDirectory":"/platform","startCommand":"npm run start:prod","healthcheckPath":"/api/health"}' \
+  'mutation($serviceId: String!, $environmentId: String!, $input: ServiceInstanceUpdateInput!) { serviceInstanceUpdate(serviceId: $serviceId, environmentId: $environmentId, input: $input) }'
+railway service source connect --repo giannakkas/barpi --branch main --service player
+railway domain player.oncue.cy --service player      # prints the CNAME target and the TXT token
+```
 
-1. Railway → project `barpi` → *New* → *GitHub repo* → `giannakkas/barpi`, branch `main`.
-   Name the service `player`.
-2. Service *Settings*: Root directory `platform`; Config-as-code file `platform/railway.json`.
-3. *Variables*: `DATABASE_URL = ${{Postgres.DATABASE_URL}}?schema=licensing`,
-   `PLATFORM_ADMIN_PASSWORD`, `PLATFORM_SESSION_SECRET`, `LICENSE_SIGNING_SECRET` (long
-   random strings), `PUBLIC_URL = https://player.oncue.cy`. Do **not** set `NODE_ENV`.
-4. *Settings → Networking → Custom domain*: `player.oncue.cy`, target port **8080**.
-   Railway prints a CNAME and a `_railway-verify` TXT record.
-5. Cloudflare → `oncue.cy` → DNS: add both records, CNAME with the proxy **off** (grey
-   cloud). The certificate issues a few minutes after the TXT is live; after that the
-   proxy may be turned on with SSL mode Full (strict).
-6. Deploy. `npm run start:prod` applies the migrations and starts the server; the health
-   check is `/api/health`.
-
-The programs are built with `https://player.oncue.cy` as their platform, so once the
-domain answers, existing installations start checking in without a new build.
+The service deploys from branch `claude/barpi-monitor` until that branch is merged; then
+switch it to `main` (`railway service source connect … --branch main`). Variables: see
+"Environment" above; do **not** set `NODE_ENV`.
