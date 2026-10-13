@@ -35,6 +35,8 @@ class Source:
     url: str
     loop: bool = False            # loop a file when it reaches the end
     silence_alarm: bool = True    # raise the SILENCE alarm on this source
+    level_alarm: bool = True      # OVER, TOO LOUD, LOW LEVEL and missing-channel alarms
+    video_alarm: bool = True      # NO VIDEO, FROZEN and BLACK alarms
 
     @property
     def is_stream(self) -> bool:
@@ -57,6 +59,23 @@ class Settings:
     meter_release_db_s: float = 20.0
     peak_hold_s: float = 1.5
     reconnect: bool = True
+    # level alarms
+    over_alarm: bool = True               # OVER: a sample at (or within 0.3 dB of) full scale
+    over_hold_s: float = 5.0              # how long OVER stays lit after the last clipped frame
+    loud_lufs: float = -18.0              # TOO LOUD when short-term loudness exceeds this...
+    loud_seconds: float = 3.0             # ...for this long
+    high_peak_db: float = -3.0            # TOO LOUD also when peaks reach this level...
+    high_peak_events: int = 3             # ...this many times within 10 s
+    low_level_db: float = -30.0           # LOW LEVEL when the loudest channel stays under this...
+    low_level_seconds: float = 30.0       # ...for this long (above the silence threshold)
+    channel_missing_seconds: float = 10.0 # L MISSING / R MISSING after this long
+    # video alarms (one frame per second is sampled)
+    video_analysis: bool = True
+    freeze_seconds: float = 10.0          # FROZEN when the picture has not changed for this long
+    black_seconds: float = 5.0            # BLACK when the picture stays dark for this long
+    black_level: float = 20.0             # mean brightness (0-255) under which a frame counts as black
+    no_video_seconds: float = 5.0         # NO VIDEO when no frame can be read for this long
+    alarm_log: bool = True                # append every alarm start/end to alarms.csv
 
 
 def _from_dict(cls, data: dict):
@@ -72,6 +91,7 @@ class Config:
     mute_all: bool = False
     geometry: str = ""          # window geometry, base64 (opaque Qt blob)
     layout_columns: int = 0     # 0 = automatic
+    show_alarm_log: bool = True # the alarm log panel under the tiles
 
     @classmethod
     def load(cls, path: Path) -> "Config":
@@ -94,6 +114,7 @@ class Config:
         cfg.mute_all = bool(raw.get("mute_all", False))
         cfg.geometry = str(raw.get("geometry", ""))
         cfg.layout_columns = int(raw.get("layout_columns", 0))
+        cfg.show_alarm_log = bool(raw.get("show_alarm_log", True))
         return cfg
 
     def save(self, path: Path) -> None:

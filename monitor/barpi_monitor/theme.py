@@ -1,8 +1,11 @@
 """Dark control-room theme. Colours live here so the meter, tiles and window agree."""
 from __future__ import annotations
 
+import sys
+
+from PySide6.QtCore import QEvent, QObject
 from PySide6.QtGui import QColor, QPalette
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QWidget
 
 BG = "#0f1115"
 PANEL = "#171a21"
@@ -54,3 +57,33 @@ def apply_theme(app: QApplication) -> None:
         QPushButton:hover {{ border-color: {ACCENT}; }}
         QPushButton:default {{ background: {ACCENT}; border-color: {ACCENT}; color: white; }}
     """)
+
+
+def apply_dark_title_bar(widget: QWidget) -> None:
+    """Ask Windows for a dark title bar on this top-level window (no-op elsewhere).
+
+    Windows draws the title bar itself and follows the system theme, not the app palette,
+    so a dark app gets a white bar unless it opts in through DWM. Attribute 20 is the
+    documented one (Windows 10 20H1+); 19 is the pre-release value older builds used.
+    """
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        hwnd = ctypes.c_void_p(int(widget.winId()))
+        value = ctypes.c_int(1)
+        for attribute in (20, 19):
+            if ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, attribute, ctypes.byref(value),
+                                                          ctypes.sizeof(value)) == 0:
+                return
+    except Exception:  # noqa: BLE001 (cosmetic: never let this break the app)
+        pass
+
+
+class DarkTitleBarFilter(QObject):
+    """Applies the dark title bar to every top-level window as it is shown (dialogs included)."""
+
+    def eventFilter(self, obj, event) -> bool:  # noqa: N802 (Qt API)
+        if event.type() == QEvent.Show and isinstance(obj, QWidget) and obj.isWindow():
+            apply_dark_title_bar(obj)
+        return False

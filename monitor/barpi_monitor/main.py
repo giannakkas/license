@@ -81,7 +81,7 @@ def main(argv: list[str] | None = None) -> int:
     from PySide6.QtGui import QIcon
     from PySide6.QtWidgets import QApplication, QMessageBox
 
-    from .theme import apply_theme
+    from .theme import DarkTitleBarFilter, apply_theme
 
     app = QApplication(sys.argv[:1])
     app.setOrganizationName(ORG_NAME)
@@ -89,6 +89,8 @@ def main(argv: list[str] | None = None) -> int:
     app.setApplicationVersion(__version__)
     locale.setlocale(locale.LC_NUMERIC, "C")  # Qt applies the user locale; libmpv needs C numerics
     apply_theme(app)
+    title_bar_filter = DarkTitleBarFilter(app)
+    app.installEventFilter(title_bar_filter)
     for icon in (base_dir() / "assets" / "icon.ico", base_dir() / "assets" / "icon.png"):
         if icon.exists():
             app.setWindowIcon(QIcon(str(icon)))

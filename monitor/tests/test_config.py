@@ -50,3 +50,14 @@ def test_config_bad_json_falls_back_to_defaults(tmp_path):
 
 def test_missing_config_is_defaults(tmp_path):
     assert Config.load(tmp_path / "nope.json") == Config()
+
+
+def test_new_settings_defaults_and_round_trip(tmp_path):
+    cfg = Config(sources=[Source("a", "rtsp://x", level_alarm=False, video_alarm=False)],
+                 settings=Settings(loud_lufs=-20, freeze_seconds=4, video_analysis=False), show_alarm_log=False)
+    path = tmp_path / "c.json"
+    cfg.save(path)
+    loaded = Config.load(path)
+    assert loaded == cfg
+    assert not loaded.sources[0].level_alarm and not loaded.sources[0].video_alarm
+    assert Settings().over_alarm and Settings().high_peak_events == 3 and Settings().black_level == 20.0

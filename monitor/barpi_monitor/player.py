@@ -8,6 +8,10 @@ The meters are fed by two FFmpeg audio filters inserted in mpv's filter chain:
 mpv exposes those tags through the ``af-metadata/<label>`` property, which is read
 ~25 times a second here. Because the filters sit *before* mute/volume and before the
 down-mix to the sound card's layout, a muted 5.1 stream still meters all six channels.
+
+For the picture alarms one raw frame per second is fetched with ``screenshot-raw`` and
+reduced to a sparse pixel sample (see ``levels.frame_signature``): identical samples
+mean a frozen picture, a dark mean means black, and a failing grab means no video.
 """
 from __future__ import annotations
 
@@ -19,7 +23,7 @@ from dataclasses import dataclass, field
 from PySide6.QtCore import QObject, QTimer, Signal, Slot
 
 from .config import Settings, Source
-from .levels import SILENCE_FLOOR, parse_astats, parse_r128
+from .levels import SILENCE_FLOOR, frame_signature, parse_astats, parse_r128
 
 log = logging.getLogger(__name__)
 
@@ -29,12 +33,15 @@ AF_CHAIN = (
 )
 POLL_HZ = 25
 INFO_EVERY_S = 1.0
+PROGRESS_EVERY_S = 0.25
+FRAME_EVERY_S = 1.0
 
 
 class State:
     IDLE = "idle"
     CONNECTING = "connecting"
     PLAYING = "playing"
+    PAUSED = "paused"
     BUFFERING = "buffering"
     STALLED = "stalled"
     RECONNECTING = "reconnecting"
@@ -44,6 +51,8 @@ class State:
 
 # States during which the operator should see a big red flag on the tile.
 ALARM_STATES = {State.STALLED, State.RECONNECTING, State.ERROR}
+# States in which a file is loaded and transport controls make sense.
+LOADED_STATES = {State.PLAYING, State.PAUSED, State.BUFFERING}
 
 
 @dataclass
@@ -92,6 +101,22 @@ class StreamInfo:
         return " · ".join(parts)
 
 
+@dataclass
+class Progress:
+    time_pos: float | None = None
+    duration: float | None = None   # None for live streams
+    paused: bool = False
+    seekable: bool = False
+
+
+@dataclass
+class FrameSample:
+    t: float
+    ok: bool                 # False: no frame could be read (no video track, or nothing decoded yet)
+    signature: bytes = b""
+    mean: float = 0.0        # mean brightness 0-255
+
+
 class MpvUnavailable(RuntimeError):
     pass
 
@@ -112,8 +137,10 @@ class MonitorPlayer(QObject):
     the GUI thread by Qt; slots on this object run on the GUI thread.
     """
 
-    levels = Signal(object)        # LevelSnapshot
-    info = Signal(object)          # StreamInfo
+    levels = Signal(object)        # LevelSnapshot, ~25 Hz
+    info = Signal(object)          # StreamInfo, 1 Hz
+    progress = Signal(object)      # Progress, 4 Hz
+    frame = Signal(object)         # FrameSample, 1 Hz while playing (video analysis on)
     state = Signal(str, str)       # state, detail
     clicked = Signal()
     double_clicked = Signal()
@@ -133,10 +160,10 @@ class MonitorPlayer(QObject):
         self._loading = False
         self._attempts = 0
         self._audible = False
+        self._paused = False
         self._last_meta: dict | None = None
         self._last_pos: float | None = None
         self._pos_frozen_since: float | None = None
-        self._buffering_since: float | None = None
         self._reconnect_timer = QTimer(self)
         self._reconnect_timer.setSingleShot(True)
         self._reconnect_timer.timeout.connect(self._do_load)
@@ -201,6 +228,10 @@ class MonitorPlayer(QObject):
     def current_state(self) -> str:
         return self._state
 
+    @property
+    def is_paused(self) -> bool:
+        return self._paused
+
     def load(self, source: Source) -> None:
         self.source = source
         self._attempts = 0
@@ -212,6 +243,21 @@ class MonitorPlayer(QObject):
         self._loading = False
         self._try_command("stop")
         self._set_state(State.IDLE, "")
+
+    def set_paused(self, paused: bool) -> None:
+        self._try_set("pause", "yes" if paused else "no")
+
+    def toggle_pause(self) -> None:
+        self.set_paused(not self._paused)
+
+    def seek_relative(self, seconds: float) -> None:
+        self._try_command("seek", seconds, "relative")
+
+    def seek_absolute(self, seconds: float) -> None:
+        self._try_command("seek", max(0.0, seconds), "absolute")
+
+    def seek_percent(self, percent: float) -> None:
+        self._try_command("seek", max(0.0, min(100.0, percent)), "absolute-percent")
 
     def set_audible(self, audible: bool) -> None:
         self._audible = bool(audible)
@@ -277,8 +323,8 @@ class MonitorPlayer(QObject):
         self._last_meta = None
         self._last_pos = None
         self._pos_frozen_since = None
-        self._buffering_since = None
         self._try_set("loop-file", "inf" if (src.loop and not src.is_stream) else "no")
+        self._try_set("pause", "no")
         self._set_state(State.CONNECTING if self._attempts == 0 else State.RECONNECTING,
                         "" if self._attempts == 0 else f"attempt {self._attempts + 1}")
         try:
@@ -315,7 +361,7 @@ class MonitorPlayer(QObject):
     def _handle_file_loaded(self) -> None:
         self._loading = False
         self._attempts = 0
-        self._set_state(State.PLAYING, "")
+        self._set_state(State.PAUSED if self._paused else State.PLAYING, "")
 
     @Slot(str, str)
     def _handle_end_file(self, reason: str, error: str) -> None:
@@ -364,28 +410,35 @@ class MonitorPlayer(QObject):
 
     def _poll_loop(self) -> None:
         period = 1.0 / POLL_HZ
-        last_info = 0.0
+        last_info = last_progress = last_frame = 0.0
         while not self._stop.is_set():
             now = time.monotonic()
             try:
                 snap = self._read_levels(now)
                 if snap is not None:
                     self.levels.emit(snap)
+                if now - last_progress >= PROGRESS_EVERY_S:
+                    last_progress = now
+                    self._read_progress()
                 if now - last_info >= INFO_EVERY_S:
                     last_info = now
                     info = self._read_info()
                     self.info.emit(info)
                     self._derive_state(info, now)
+                if (self.settings.video_analysis and self._state == State.PLAYING
+                        and now - last_frame >= FRAME_EVERY_S):
+                    last_frame = now
+                    self.frame.emit(self._read_frame(now))
             except Exception:  # never let the meter thread die
                 log.exception("poll loop error")
             self._stop.wait(period)
 
     def _read_levels(self, now: float) -> LevelSnapshot | None:
-        if self._loading and self._state != State.PLAYING:
+        if self._loading and self._state not in LOADED_STATES:
             return None
         meta = self._get("af-metadata/stats")
         if not meta:
-            if self._state == State.PLAYING:
+            if self._state in LOADED_STATES:
                 return LevelSnapshot(t=now, has_audio=False)
             return None
         fresh = meta != self._last_meta
@@ -394,6 +447,32 @@ class MonitorPlayer(QObject):
         mom, short = parse_r128(self._get("af-metadata/r128"))
         return LevelSnapshot(t=now, peaks=peaks, rms=rms, momentary=mom, short_term=short,
                              has_audio=bool(peaks), fresh=fresh)
+
+    def _read_progress(self) -> None:
+        if self._state not in LOADED_STATES:
+            return
+        paused = bool(self._get("pause", False))
+        self._paused = paused
+        if paused and self._state in (State.PLAYING, State.BUFFERING):
+            self._set_state(State.PAUSED, "")
+        elif not paused and self._state == State.PAUSED:
+            self._set_state(State.PLAYING, "")
+        tp = self._get("time-pos")
+        dur = self._get("duration")
+        self.progress.emit(Progress(time_pos=float(tp) if tp is not None else None,
+                                    duration=float(dur) if dur else None,
+                                    paused=paused, seekable=bool(self._get("seekable", False))))
+
+    def _read_frame(self, now: float) -> FrameSample:
+        try:
+            shot = self._mpv.command("screenshot-raw", "video")
+            data = shot.get("data") if isinstance(shot, dict) else None
+            if not data:
+                return FrameSample(t=now, ok=False)
+            sig, mean = frame_signature(data)
+            return FrameSample(t=now, ok=True, signature=sig, mean=mean)
+        except Exception:
+            return FrameSample(t=now, ok=False)
 
     def _read_info(self) -> StreamInfo:
         info = StreamInfo()
@@ -419,8 +498,9 @@ class MonitorPlayer(QObject):
     def _derive_state(self, info: StreamInfo, now: float) -> None:
         """Work out buffering / stalled from playback progress; everything else comes from events."""
         if self._state not in (State.PLAYING, State.BUFFERING):
+            self._pos_frozen_since = None
             return
-        if info.idle:
+        if info.idle or self._paused:
             return
         paused_for_cache = bool(self._get("paused-for-cache", False))
         pos = info.time_pos

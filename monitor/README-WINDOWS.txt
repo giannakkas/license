@@ -17,6 +17,12 @@ Adding sources
   You can also start it with sources on the command line:
       BarpiMonitor.exe rtsp://10.0.0.5/live "D:\clips\promo.mp4"
 
+Playback
+  Each tile has Play/Pause, Stop and Loop buttons and a position bar (files only).
+  Space       play / pause the selected tile       Ctrl+Space  pause / resume everything
+  Left/Right  seek 5 s (Shift: 30 s)               Home        back to the start
+  F5 restarts the selected source from the beginning.
+
 Listening
   Click a tile to hear it. Exactly one source is audible at a time; keys 1-9
   switch. "Mute all" silences the speakers but the meters keep working.
@@ -31,11 +37,21 @@ Meters (dBFS)
   Under each tile: EBU R128 momentary (M) and short-term (S) loudness in LUFS.
   5.1 and other multichannel sources show one bar per channel.
 
-Alarms (tile flashes red, listed in the status bar, counted in the title)
-  SILENCE    every channel under the threshold (default -50 dBFS) for 10 s
-  NO SIGNAL  the stream dropped, errored or stalled; it reconnects by itself
-  Settings (Ctrl+,) change thresholds, timing and an optional beep.
+Alarms (tile flashes red, named on the video, listed in the status bar and in
+the alarm log panel; every start and end is also written to alarms.csv)
+  NO SIGNAL   the stream dropped, errored or stalled; it reconnects by itself
+  NO VIDEO    no picture can be read for 5 s
+  FROZEN      the picture has not changed for 10 s
+  BLACK       the picture has stayed dark for 5 s
+  OVER        a sample hit full scale (clipping)
+  TOO LOUD    short-term loudness over -18 LUFS for 3 s, or 3 peaks at -3 dBFS in 10 s
+  SILENCE     every channel under -50 dBFS for 10 s
+  L / R MISSING  one channel silent for 10 s while the other carries sound
+  LOW LEVEL   the loudest channel under -30 dBFS for 30 s
+  All thresholds and times are in Settings (Ctrl+,); each source can switch its
+  silence, level and picture alarms off (Edit, F2). Optional beep in Settings.
 
 Keys
   1-9 listen to tile    M mute all      Enter/double-click show one tile
-  F2 edit   Del remove   F5 restart     F11 full screen   Esc back   F1 help
+  F2 edit   Del remove   F5 restart     Ctrl+L alarm log  F11 full screen
+  Esc back  F1 help

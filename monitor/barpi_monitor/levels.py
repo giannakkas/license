@@ -179,3 +179,75 @@ class OverDetector:
     def reset(self) -> None:
         self.since_over = math.inf
         self.count = 0
+
+
+class SustainedCondition:
+    """True once ``condition`` has held continuously for ``hold_seconds``.
+
+    The generic form of the silence detector: used for low level, too loud, missing
+    channel, frozen picture, black picture and no-video alarms.
+    """
+
+    def __init__(self, hold_seconds: float):
+        self.hold_seconds = float(hold_seconds)
+        self.held_for = 0.0
+
+    def update(self, dt: float, condition: bool) -> bool:
+        if condition:
+            self.held_for += max(0.0, dt)
+        else:
+            self.held_for = 0.0
+        return self.active
+
+    @property
+    def active(self) -> bool:
+        return self.held_for >= self.hold_seconds
+
+    def reset(self) -> None:
+        self.held_for = 0.0
+
+
+class EventCounter:
+    """Counts events in a sliding window: ``count`` is how many happened in the last ``window_seconds``."""
+
+    def __init__(self, window_seconds: float = 10.0):
+        self.window = float(window_seconds)
+        self._times: list[float] = []
+        self._now = 0.0
+
+    def update(self, dt: float, event: bool) -> int:
+        self._now += max(0.0, dt)
+        if event:
+            self._times.append(self._now)
+        cutoff = self._now - self.window
+        while self._times and self._times[0] < cutoff:
+            self._times.pop(0)
+        return self.count
+
+    @property
+    def count(self) -> int:
+        return len(self._times)
+
+    def reset(self) -> None:
+        self._times = []
+
+
+def missing_channels(peaks: list[float], silence_db: float, signal_db: float = -40.0) -> list[int]:
+    """Indexes of channels that are silent while at least one other channel carries signal."""
+    if len(peaks) < 2 or max(peaks) < signal_db:
+        return []
+    return [i for i, p in enumerate(peaks) if p < silence_db]
+
+
+def frame_signature(data, bytes_per_pixel: int = 4, stride: int = 509) -> tuple[bytes, float]:
+    """A sparse sample of a raw frame (one pixel in ~500 per colour channel) and its mean brightness 0-255.
+
+    Two identical signatures a second apart mean the picture did not change; a mean under
+    ~20 means a black picture. Sampling keeps this to a few milliseconds per 1080p frame.
+    """
+    chans = [bytes(data[c::bytes_per_pixel][::stride]) for c in range(3)]
+    total = sum(len(c) for c in chans)
+    if not total:
+        return b"", 0.0
+    mean = sum(sum(c) for c in chans) / total
+    return b"".join(chans), mean

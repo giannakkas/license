@@ -89,3 +89,45 @@ def test_format_db():
     assert format_db(SILENCE_FLOOR) == "-inf"
     assert format_db(-6.0206) == "-6.0"
     assert format_db(-6.4, 0) == "-6"
+
+
+def test_sustained_condition():
+    from barpi_monitor.levels import SustainedCondition
+    s = SustainedCondition(hold_seconds=5)
+    for _ in range(4):
+        assert not s.update(1.0, True)
+    assert s.update(1.0, True)
+    assert not s.update(0.1, False)
+    assert s.held_for == 0.0
+
+
+def test_event_counter_window():
+    from barpi_monitor.levels import EventCounter
+    c = EventCounter(window_seconds=10)
+    assert c.update(0.0, True) == 1
+    assert c.update(4.0, True) == 2
+    assert c.update(4.0, False) == 2
+    assert c.update(3.0, True) == 2      # the first event (t=0) fell out of the 10 s window at t=11
+    c.reset()
+    assert c.count == 0
+
+
+def test_missing_channels():
+    from barpi_monitor.levels import missing_channels
+    assert missing_channels([-20.0, -70.0], -50.0) == [1]
+    assert missing_channels([-70.0, -20.0], -50.0) == [0]
+    assert missing_channels([-70.0, -70.0], -50.0) == []      # both silent: that is SILENCE, not a missing channel
+    assert missing_channels([-20.0, -20.0], -50.0) == []
+    assert missing_channels([-20.0], -50.0) == []
+    assert missing_channels([-20.0, -70.0, -70.0, -20.0], -50.0) == [1, 2]
+
+
+def test_frame_signature():
+    from barpi_monitor.levels import frame_signature
+    black = bytes(1920 * 1080 * 4)
+    sig_b, mean_b = frame_signature(black)
+    assert mean_b == 0.0 and len(sig_b) > 1000
+    grey = bytes([128, 128, 128, 0] * (1920 * 1080))
+    sig_g, mean_g = frame_signature(grey)
+    assert mean_g == 128.0 and sig_g != sig_b
+    assert frame_signature(b"") == (b"", 0.0)

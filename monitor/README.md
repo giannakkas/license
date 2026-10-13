@@ -33,9 +33,25 @@ installed. The exe is not code-signed, so SmartScreen will ask once: *More info 
 | Audio | One tile audible at a time (click or keys 1–9), monitor volume, output device selection, mute-all that keeps metering |
 | Meters | Per-channel peak (PPM ballistics) + RMS + peak hold in dBFS, zone-coloured at −18 / −9 dBFS, OVER indicator, EBU R128 momentary & short-term loudness |
 | Channels | Mono, stereo, 5.1, 7.1: one bar per channel of the *source*, even when the sound card is stereo |
-| Alarms | SILENCE (threshold and duration configurable), NO SIGNAL (drop / error / stall), auto-reconnect with back-off, optional beep |
+| Playback | Play/Pause, Stop, Loop and a position bar per tile; Space, arrow keys, Home; pause everything with Ctrl+Space |
+| Alarms | NO SIGNAL (drop / error / stall, with auto-reconnect), NO VIDEO, FROZEN, BLACK, OVER (clipping), TOO LOUD (short-term LUFS or repeated peaks), SILENCE, L / R MISSING, LOW LEVEL; all thresholds configurable, per-source on/off, optional beep |
+| Alarm log | Every alarm start and end with a timestamp in a panel under the tiles and in `alarms.csv` next to the config file |
 | Status | Resolution, frame rate, codecs, sample rate, layout and bitrate under each tile; alarm list in the status bar and window title |
 | Persistence | Sources, layout, volume, device and window position are saved per user |
+
+## How the alarms work
+
+Audio alarms come from the same per-frame peak, RMS and loudness figures as the meters
+(`barpi_monitor/tile.py`, detectors in `barpi_monitor/levels.py`): OVER is any frame
+whose sample peak reaches −0.3 dBFS; TOO LOUD is short-term loudness above a threshold
+for a few seconds, or several peaks above a second threshold within ten seconds;
+SILENCE, LOW LEVEL and L/R MISSING are sustained conditions on the loudest channel.
+
+Picture alarms sample one raw frame per second (`screenshot-raw` in mpv, about 20 ms
+and a few percent of a core per 1080p source) and keep a sparse pixel signature of it.
+Two identical signatures in a row mean the picture did not change (FROZEN after N s);
+a low mean brightness means BLACK; a grab that fails while playing means NO VIDEO.
+Alarms are suspended while a source is paused, stopped or reconnecting.
 
 ## How the meters work
 
@@ -101,14 +117,14 @@ the Windows build produces.
 | `barpi_monitor/levels.py` | dBFS parsing, meter ballistics, silence and over detectors (no Qt, no mpv) |
 | `barpi_monitor/player.py` | libmpv wrapper: poll thread, state machine, stall detection, reconnect |
 | `barpi_monitor/meter.py` | the meter widget |
-| `barpi_monitor/tile.py` | video surface + meter + footer + alarm logic for one source |
-| `barpi_monitor/window.py` | grid, toolbar, keyboard, drag & drop, persistence |
+| `barpi_monitor/tile.py` | video surface + meter + transport bar + footer + alarm logic for one source |
+| `barpi_monitor/window.py` | grid, toolbar, transport keys, alarm log (panel and CSV), drag & drop, persistence |
 | `barpi_monitor/selftest.py` | `--self-test` |
 | `BarpiMonitor.spec` | PyInstaller recipe |
 | `build.ps1` | local Windows build |
 | `../.github/workflows/build-monitor.yml` | CI build and release |
 
-Settings and sources: `%APPDATA%\BarpiMonitor\config.json`. Log: `monitor.log` next to it.
+Settings and sources: `%APPDATA%\BarpiMonitor\config.json`. Log: `monitor.log` next to it; alarms: `alarms.csv`.
 
 ## Troubleshooting
 

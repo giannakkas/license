@@ -1,14 +1,16 @@
-"""The main window: a grid of tiles, a toolbar, and the one-tile-audible rule."""
+"""The main window: a grid of tiles, a toolbar, transport keys, the alarm log and the one-tile-audible rule."""
 from __future__ import annotations
 
+import csv
 import logging
 import math
+import time
 from pathlib import Path
 
 from PySide6.QtCore import QByteArray, Qt, QTimer
-from PySide6.QtGui import QAction, QKeySequence
-from PySide6.QtWidgets import (QApplication, QComboBox, QFileDialog, QGridLayout, QLabel, QMainWindow, QMessageBox,
-                               QSlider, QToolBar, QWidget)
+from PySide6.QtGui import QAction, QFont, QKeySequence
+from PySide6.QtWidgets import (QApplication, QComboBox, QDockWidget, QFileDialog, QGridLayout, QLabel, QMainWindow,
+                               QMessageBox, QPlainTextEdit, QSlider, QToolBar, QWidget)
 
 from . import APP_NAME, __version__, theme
 from .config import Config, Source, guess_name, is_url
@@ -58,6 +60,8 @@ class MainWindow(QMainWindow):
         self.empty_label.setStyleSheet(f"color: {theme.MUTED}; font-size: 14px;")
 
         self._build_toolbar()
+        self._build_alarm_log()
+        self._build_shortcuts()
         self.status_left = QLabel("")
         self.status_right = QLabel("")
         self.statusBar().addWidget(self.status_left, 1)
@@ -88,29 +92,38 @@ class MainWindow(QMainWindow):
         self._clock.start()
         self._update_status()
 
-    # ------------------------------------------------------------------ toolbar
+    # ------------------------------------------------------------------ toolbar, log, keys
+
+    def _action(self, text, slot, shortcut=None, checkable=False, tip=None, toolbar=None):
+        a = QAction(text, self)
+        if shortcut:
+            a.setShortcut(QKeySequence(shortcut))
+        a.setCheckable(checkable)
+        a.triggered.connect(slot)
+        a.setToolTip((tip or text) + (f"  ({shortcut})" if shortcut else ""))
+        if toolbar is not None:
+            toolbar.addAction(a)
+        else:
+            self.addAction(a)
+        return a
 
     def _build_toolbar(self) -> None:
         tb = QToolBar("Main")
         tb.setMovable(False)
         tb.setToolButtonStyle(Qt.ToolButtonTextOnly)
         self.addToolBar(tb)
-
-        def act(text, slot, shortcut=None, checkable=False, tip=None):
-            a = QAction(text, self)
-            if shortcut:
-                a.setShortcut(QKeySequence(shortcut))
-            a.setCheckable(checkable)
-            a.triggered.connect(slot)
-            a.setToolTip((tip or text) + (f"  ({shortcut})" if shortcut else ""))
-            tb.addAction(a)
-            return a
+        act = lambda *a, **k: self._action(*a, toolbar=tb, **k)  # noqa: E731
 
         act("Add stream…", self._add_url, "Ctrl+N", tip="Add a network stream by URL")
         act("Add files…", self._add_files, "Ctrl+O", tip="Add video files")
         act("Edit", self._edit_selected, "F2", tip="Edit the selected source")
         act("Remove", self._remove_selected, "Delete", tip="Remove the selected source")
-        act("Restart", self._restart_selected, "F5", tip="Reconnect / restart the selected source")
+        tb.addSeparator()
+        act("Play/Pause", self._play_pause_selected, "Space", tip="Play or pause the selected source")
+        act("Stop", self._stop_selected, tip="Stop the selected source")
+        act("Restart", self._restart_selected, "F5", tip="Reconnect / restart the selected source from the beginning")
+        self.act_pause_all = act("Pause all", self._pause_all, "Ctrl+Space", checkable=True,
+                                 tip="Pause every source; untick to resume them all")
         tb.addSeparator()
         self.act_mute = act("Mute all", self._toggle_mute_all, "M", checkable=True,
                             tip="Silence the speakers (meters keep working)")
@@ -118,19 +131,22 @@ class MainWindow(QMainWindow):
         self.volume = QSlider(Qt.Horizontal)
         self.volume.setRange(0, 130)
         self.volume.setValue(self.config.settings.volume)
-        self.volume.setFixedWidth(110)
+        self.volume.setFixedWidth(100)
+        self.volume.setFocusPolicy(Qt.NoFocus)
         self.volume.setToolTip("Monitor volume")
         self.volume.valueChanged.connect(self._set_volume)
-        tb.addWidget(QLabel("  Vol "))
+        tb.addWidget(QLabel(" Vol "))
         tb.addWidget(self.volume)
-        tb.addWidget(QLabel("   Audio out "))
+        tb.addWidget(QLabel("  Audio out "))
         self.device_combo = QComboBox()
-        self.device_combo.setMinimumWidth(180)
+        self.device_combo.setMinimumWidth(160)
+        self.device_combo.setFocusPolicy(Qt.NoFocus)
         self.device_combo.setToolTip("Which sound device plays the audible source")
         self.device_combo.currentIndexChanged.connect(self._audio_device_changed)
         tb.addWidget(self.device_combo)
-        tb.addWidget(QLabel("   Layout "))
+        tb.addWidget(QLabel("  Layout "))
         self.layout_combo = QComboBox()
+        self.layout_combo.setFocusPolicy(Qt.NoFocus)
         self.layout_combo.addItem("Auto", 0)
         for c in (1, 2, 3, 4, 5, 6):
             self.layout_combo.addItem(f"{c} col", c)
@@ -139,10 +155,42 @@ class MainWindow(QMainWindow):
         self.layout_combo.currentIndexChanged.connect(self._layout_changed)
         tb.addWidget(self.layout_combo)
         tb.addSeparator()
+        self.act_log = act("Alarm log", self._toggle_log, "Ctrl+L", checkable=True, tip="Show the alarm log panel")
         self.act_fullscreen = act("Full screen", self._toggle_fullscreen, "F11", checkable=True)
         self.act_top = act("On top", self._toggle_on_top, checkable=True, tip="Keep this window above others")
         act("Settings…", self._open_settings, "Ctrl+,")
         act("Help", self._about, "F1")
+
+    def _build_alarm_log(self) -> None:
+        self.log_view = QPlainTextEdit()
+        self.log_view.setReadOnly(True)
+        self.log_view.setMaximumBlockCount(5000)
+        mono = QFont("Consolas")
+        mono.setStyleHint(QFont.Monospace)
+        mono.setPointSizeF(9)
+        self.log_view.setFont(mono)
+        self.log_view.setStyleSheet(f"background: {theme.PANEL}; color: {theme.TEXT}; border: none;")
+        self.log_dock = QDockWidget("Alarm log", self)
+        self.log_dock.setObjectName("alarmLog")
+        self.log_dock.setWidget(self.log_view)
+        self.log_dock.setFeatures(QDockWidget.DockWidgetClosable | QDockWidget.DockWidgetMovable)
+        self.log_dock.setStyleSheet(f"QDockWidget {{ color: {theme.MUTED}; }} QDockWidget::title {{ background: {theme.PANEL_2}; padding: 3px; }}")
+        self.addDockWidget(Qt.BottomDockWidgetArea, self.log_dock)
+        self.log_dock.setVisible(self.config.show_alarm_log)
+        self.log_dock.visibilityChanged.connect(self._log_visibility_changed)
+        self.act_log.setChecked(self.config.show_alarm_log)
+        self._log_line(f"{APP_NAME} {__version__} started")
+
+    def _build_shortcuts(self) -> None:
+        self._action("Seek back 5 s", lambda: self._seek_selected(-5), "Left")
+        self._action("Seek forward 5 s", lambda: self._seek_selected(5), "Right")
+        self._action("Seek back 30 s", lambda: self._seek_selected(-30), "Shift+Left")
+        self._action("Seek forward 30 s", lambda: self._seek_selected(30), "Shift+Right")
+        self._action("Back to start", self._seek_start_selected, "Home")
+        self._action("Show selected alone", self._toggle_maximize_selected, "Return")
+        self._action("Leave full screen / single view", self._escape, "Escape")
+        for i in range(1, 10):
+            self._action(f"Listen to tile {i}", lambda _=False, n=i: self._listen_to(n - 1), str(i))
 
     # ------------------------------------------------------------------ tiles
 
@@ -151,6 +199,8 @@ class MainWindow(QMainWindow):
         tile.activated.connect(lambda t: self._select_tile(t, make_audible=True))
         tile.maximize_toggled.connect(self._toggle_maximize)
         tile.alarm_changed.connect(lambda _t: self._update_status())
+        tile.alarm_started.connect(lambda t, name, detail: self._log_alarm(t, name, detail, True))
+        tile.alarm_ended.connect(lambda t, name: self._log_alarm(t, name, "", False))
         tile.set_volume(self.config.settings.volume)
         self.tiles.append(tile)
         tile.start()
@@ -248,9 +298,49 @@ class MainWindow(QMainWindow):
         self.save_config()
         self._update_status()
 
+    # ------------------------------------------------------------------ transport
+
+    def _play_pause_selected(self) -> None:
+        if self._selected is not None:
+            self._selected.play_pause()
+
+    def _stop_selected(self) -> None:
+        if self._selected is not None:
+            self._selected.stop()
+
     def _restart_selected(self) -> None:
         if self._selected is not None:
             self._selected.restart()
+
+    def _seek_selected(self, seconds: float) -> None:
+        if self._selected is not None:
+            self._selected.seek_relative(seconds)
+
+    def _seek_start_selected(self) -> None:
+        if self._selected is not None:
+            self._selected.seek_start()
+
+    def _pause_all(self, checked: bool) -> None:
+        for t in self.tiles:
+            t.set_paused(bool(checked))
+
+    def _toggle_maximize_selected(self) -> None:
+        if self._selected is not None:
+            self._toggle_maximize(self._selected)
+
+    def _listen_to(self, index: int) -> None:
+        if index < len(self.tiles):
+            self._select_tile(self.tiles[index], make_audible=True)
+
+    def _escape(self) -> None:
+        if self.isFullScreen():
+            self.act_fullscreen.setChecked(False)
+            self.showNormal()
+        elif self._maximized is not None:
+            self._maximized = None
+            self._relayout()
+
+    # ------------------------------------------------------------------ selection / audio
 
     def _select_tile(self, tile: SourceTile, make_audible: bool) -> None:
         self._selected = tile
@@ -274,8 +364,6 @@ class MainWindow(QMainWindow):
     def _toggle_maximize(self, tile: SourceTile) -> None:
         self._maximized = None if self._maximized is tile else tile
         self._relayout()
-
-    # ------------------------------------------------------------------ audio
 
     def _toggle_mute_all(self, checked: bool) -> None:
         self.config.mute_all = bool(checked)
@@ -309,6 +397,37 @@ class MainWindow(QMainWindow):
         self._relayout()
         self._save_soon()
 
+    # ------------------------------------------------------------------ alarm log
+
+    def _log_line(self, text: str) -> None:
+        stamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        self.log_view.appendPlainText(f"{stamp}  {text}")
+
+    def _log_alarm(self, tile: SourceTile, name: str, detail: str, started: bool) -> None:
+        source = tile.source.display_name()
+        self._log_line(f"{'ALARM ' if started else 'clear '} {source}: {name}" + (f"  ({detail})" if detail else ""))
+        if self.config.settings.alarm_log:
+            path = self.config_path.parent / "alarms.csv"
+            try:
+                new = not path.exists()
+                path.parent.mkdir(parents=True, exist_ok=True)
+                with path.open("a", newline="", encoding="utf-8") as fh:
+                    w = csv.writer(fh)
+                    if new:
+                        w.writerow(["time", "source", "alarm", "event", "detail"])
+                    w.writerow([time.strftime("%Y-%m-%d %H:%M:%S"), source, name, "start" if started else "end", detail])
+            except OSError as exc:
+                log.warning("could not write alarm log: %s", exc)
+        self._update_status()
+
+    def _toggle_log(self, checked: bool) -> None:
+        self.log_dock.setVisible(bool(checked))
+
+    def _log_visibility_changed(self, visible: bool) -> None:
+        self.config.show_alarm_log = bool(visible)
+        self.act_log.setChecked(bool(visible))
+        self._save_soon()
+
     # ------------------------------------------------------------------ window
 
     def _toggle_fullscreen(self, checked: bool) -> None:
@@ -335,40 +454,28 @@ class MainWindow(QMainWindow):
             libmpv = str(self.tiles[0].player._get("mpv-version", "unknown"))
         QMessageBox.about(self, f"About {APP_NAME}", f"""
             <h3>{APP_NAME} {__version__}</h3>
-            <p>Multi-source video monitor with audio level meters.<br>Playback engine: {libmpv}</p>
+            <p>Multi-source video monitor with audio level meters and quality-control alarms.<br>
+            Playback engine: {libmpv}</p>
             <p><b>Click</b> a tile to listen to it (one source is audible at a time).<br>
             <b>Double-click</b> a tile to show it alone; double-click or Esc to return.</p>
             <table>
+            <tr><td><b>Space</b></td><td>play / pause the selected source</td></tr>
+            <tr><td><b>← → / Shift+← →</b></td><td>seek 5 s / 30 s in a file</td></tr>
+            <tr><td><b>Home</b></td><td>back to the start of a file</td></tr>
+            <tr><td><b>Ctrl+Space</b></td><td>pause / resume everything</td></tr>
             <tr><td><b>1–9</b></td><td>listen to tile 1–9</td></tr>
             <tr><td><b>M</b></td><td>mute all</td></tr>
             <tr><td><b>Ctrl+N / Ctrl+O</b></td><td>add stream / add files</td></tr>
             <tr><td><b>F2 / Del / F5</b></td><td>edit / remove / restart the selected source</td></tr>
             <tr><td><b>Enter</b></td><td>show the selected source alone</td></tr>
+            <tr><td><b>Ctrl+L</b></td><td>alarm log</td></tr>
             <tr><td><b>F11</b></td><td>full screen</td></tr>
             </table>
             <p>Meter: wide bar = peak (dBFS), inner bar = RMS, line = peak hold.<br>
-            Green ≤ −18 dBFS, amber to −9 dBFS, red above. SILENCE and NO SIGNAL alarms flash red.</p>
+            Green ≤ −18 dBFS, amber to −9 dBFS, red above.</p>
+            <p>Alarms: NO SIGNAL, NO VIDEO, FROZEN, BLACK, OVER, TOO LOUD, SILENCE, L/R MISSING, LOW LEVEL.<br>
+            Thresholds are in Settings; every start and end is listed in the alarm log and alarms.csv.</p>
             <p style="color:#8b93a3">Config: {self.config_path}</p>""")
-
-    def keyPressEvent(self, event) -> None:  # noqa: N802
-        key = event.key()
-        if key == Qt.Key_Escape:
-            if self.isFullScreen():
-                self.act_fullscreen.setChecked(False)
-                self.showNormal()
-            elif self._maximized is not None:
-                self._maximized = None
-                self._relayout()
-            return
-        if Qt.Key_1 <= key <= Qt.Key_9:
-            idx = key - Qt.Key_1
-            if idx < len(self.tiles):
-                self._select_tile(self.tiles[idx], make_audible=True)
-            return
-        if key in (Qt.Key_Return, Qt.Key_Enter) and self._selected is not None:
-            self._toggle_maximize(self._selected)
-            return
-        super().keyPressEvent(event)
 
     def dragEnterEvent(self, event) -> None:  # noqa: N802
         if event.mimeData().hasUrls() or event.mimeData().hasText():
@@ -401,18 +508,19 @@ class MainWindow(QMainWindow):
         listening = "none" if (audible is None or self.config.mute_all) else audible.source.display_name()
         self.status_left.setText(f"{n} source{'s' if n != 1 else ''}  ·  listening: {listening}"
                                  + ("  (muted)" if self.config.mute_all and audible is not None else ""))
-        alarms = [f"{t.source.display_name()}: {t.alarm}" for t in self.tiles if t.alarm]
+        alarms = [f"{t.source.display_name()}: {', '.join(t.alarms)}" for t in self.tiles if t.alarms]
+        count = sum(len(t.alarms) for t in self.tiles)
         if alarms:
             self.status_right.setText("⚠ " + "   ".join(alarms[:4]) + ("  …" if len(alarms) > 4 else ""))
             self.status_right.setStyleSheet(f"color: {theme.RED}; font-weight: bold;")
-            self.setWindowTitle(f"⚠ {len(alarms)} alarm{'s' if len(alarms) != 1 else ''} — {APP_NAME}")
+            self.setWindowTitle(f"⚠ {count} alarm{'s' if count != 1 else ''} — {APP_NAME}")
         else:
             self.status_right.setText("all sources OK" if n else "")
             self.status_right.setStyleSheet(f"color: {theme.MUTED};")
             self.setWindowTitle(APP_NAME)
 
     def _maybe_beep(self) -> None:
-        if self.config.settings.beep_on_alarm and any(t.alarm for t in self.tiles):
+        if self.config.settings.beep_on_alarm and any(t.alarms for t in self.tiles):
             QApplication.beep()
 
     def _save_soon(self) -> None:
