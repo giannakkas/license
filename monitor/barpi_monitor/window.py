@@ -55,7 +55,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
         self.empty_label = QLabel(
             "No sources yet.\n\nAdd a stream (RTSP, SRT, UDP, RTMP, HLS, HTTP) with Ctrl+N,\n"
-            "open video files with Ctrl+O, or drop files onto this window.")
+            "open video files with Ctrl+O, or drop files onto this window.", central)
         self.empty_label.setAlignment(Qt.AlignCenter)
         self.empty_label.setStyleSheet(f"color: {theme.MUTED}; font-size: 14px;")
 
@@ -195,7 +195,8 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------ tiles
 
     def _create_tile(self, source: Source) -> SourceTile:
-        tile = SourceTile(source, self.config.settings)
+        tile = SourceTile(source, self.config.settings, self.centralWidget())
+        tile.player.devices.connect(lambda _d: self._populate_devices())
         tile.activated.connect(lambda t: self._select_tile(t, make_audible=True))
         tile.maximize_toggled.connect(self._toggle_maximize)
         tile.alarm_changed.connect(lambda _t: self._update_status())
@@ -207,16 +208,20 @@ class MainWindow(QMainWindow):
         return tile
 
     def _relayout(self) -> None:
+        """Re-place the tiles in the grid.
+
+        Tiles are never re-parented, hidden or shown here unless their visibility really
+        changes: each one hosts a live mpv window owned by another thread, and hiding or
+        re-parenting its native parent window makes Windows exchange synchronous messages
+        between the two threads, which is how the GUI could freeze when a source was added.
+        """
         while self.grid.count():
-            item = self.grid.takeAt(0)
-            w = item.widget()
-            if w is not None and w is not self.empty_label:
-                w.setParent(self.centralWidget())
+            self.grid.takeAt(0)
         for i in range(MAX_GRID + 1):
             self.grid.setRowStretch(i, 0)
             self.grid.setColumnStretch(i, 0)
-        self.empty_label.setParent(self.centralWidget())
-        self.empty_label.setVisible(not self.tiles)
+        if self.empty_label.isHidden() == (not self.tiles):
+            self.empty_label.setVisible(not self.tiles)
         if not self.tiles:
             self.grid.addWidget(self.empty_label, 0, 0)
             return
@@ -226,7 +231,9 @@ class MainWindow(QMainWindow):
             self._maximized = None
             shown = list(self.tiles)
         for t in self.tiles:
-            t.setVisible(t in shown)
+            want = t in shown
+            if t.isHidden() == want:
+                t.setVisible(want)
         n = len(shown)
         cols = self.config.layout_columns or auto_columns(n)
         cols = max(1, min(cols, n))
@@ -449,9 +456,7 @@ class MainWindow(QMainWindow):
             self.save_config()
 
     def _about(self) -> None:
-        libmpv = "not loaded"
-        if self.tiles:
-            libmpv = str(self.tiles[0].player._get("mpv-version", "unknown"))
+        libmpv = self.tiles[0].player.mpv_version if self.tiles else "not loaded"
         QMessageBox.about(self, f"About {APP_NAME}", f"""
             <h3>{APP_NAME} {__version__}</h3>
             <p>Multi-source video monitor with audio level meters and quality-control alarms.<br>

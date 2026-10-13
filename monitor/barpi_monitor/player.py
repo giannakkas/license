@@ -138,6 +138,7 @@ class MonitorPlayer(QObject):
     """
 
     levels = Signal(object)        # LevelSnapshot, ~25 Hz
+    devices = Signal(object)       # list of (name, description) audio outputs, once after start
     info = Signal(object)          # StreamInfo, 1 Hz
     progress = Signal(object)      # Progress, 4 Hz
     frame = Signal(object)         # FrameSample, 1 Hz while playing (video analysis on)
@@ -183,36 +184,52 @@ class MonitorPlayer(QObject):
             volume=settings.volume,
             volume_max=130,
         )
+        extra: dict = dict(
+            hwdec="auto-safe" if settings.hwdec else "no",
+            network_timeout=15,
+            demuxer_lavf_o="rtsp_transport=tcp",
+            stream_lavf_o="reconnect=1,reconnect_streamed=1,reconnect_delay_max=5",
+            cache="yes",
+            demuxer_max_bytes="64MiB",
+            demuxer_max_back_bytes="16MiB",
+            cursor_autohide="no",
+            osd_font_size=44,
+            osd_border_size=2,
+            osd_align_x="center",
+            osd_align_y="center",
+            audio_channels="auto-safe",
+            screenshot_sw="yes",       # frame grabs from the decoded picture, not through the VO
+        )
+        if settings.audio_device and settings.audio_device != "auto":
+            extra["audio_device"] = settings.audio_device
         if headless:
             opts.update(vo="null", ao="null")
-        else:
-            opts["force_window"] = "yes"
-            if wid is not None:
-                opts["wid"] = int(wid)
-        self._mpv = mpv.MPV(log_handler=self._on_log, loglevel="warn", **opts)
+        elif wid is not None:
+            opts["wid"] = int(wid)
+        # Options are applied before mpv_initialize, where they cannot block; an option a very old
+        # libmpv does not know raises, in which case the core set alone is used.
+        try:
+            self._mpv = mpv.MPV(log_handler=self._on_log, loglevel="warn", **opts, **extra)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("libmpv rejected an option (%s); using the basic set", exc)
+            self._mpv = mpv.MPV(log_handler=self._on_log, loglevel="warn", **opts)
+        self.mpv_version = "libmpv"
+        self._devices: list[tuple[str, str]] = [("auto", "Autoselect device")]
+        self._devices_read = False
 
-        # Options that may not exist in every libmpv build go in one at a time.
-        self._try_set("hwdec", "auto-safe" if settings.hwdec else "no")
-        self._try_set("network-timeout", 15)
-        self._try_set("demuxer-lavf-o", "rtsp_transport=tcp")
-        self._try_set("stream-lavf-o", "reconnect=1,reconnect_streamed=1,reconnect_delay_max=5")
-        self._try_set("cache", "yes")
-        self._try_set("demuxer-max-bytes", "64MiB")
-        self._try_set("demuxer-max-back-bytes", "16MiB")
-        self._try_set("cursor-autohide", "no")
-        self._try_set("osd-font-size", 44)
-        self._try_set("osd-border-size", 2)
-        self._try_set("osd-align-x", "center")
-        self._try_set("osd-align-y", "center")
-        self._try_set("audio-channels", "auto-safe")
-        if settings.audio_device and settings.audio_device != "auto":
-            self._try_set("audio-device", settings.audio_device)
-
-        self._mpv.event_callback("end-file")(self._on_end_file)
-        self._mpv.event_callback("file-loaded")(self._on_file_loaded)
+        try:
+            self._mpv.event_callback("end-file")(self._on_end_file)
+            self._mpv.event_callback("file-loaded")(self._on_file_loaded)
+            if not headless:
+                # Registered while the core is idle and no window exists yet, so these two
+                # synchronous commands cannot wait on anything.
+                self._mpv.register_key_binding("MBTN_LEFT", self._on_mouse)
+                self._mpv.register_key_binding("MBTN_LEFT_DBL", self._on_mouse_dbl)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("could not register mpv callbacks: %s", exc)
         if not headless:
-            self._mpv.register_key_binding("MBTN_LEFT", self._on_mouse)
-            self._mpv.register_key_binding("MBTN_LEFT_DBL", self._on_mouse_dbl)
+            # The video window is created by mpv's own threads; the GUI thread never waits for it.
+            self._set_async("force-window", "yes")
 
         self._end_file.connect(self._handle_end_file)
         self._file_loaded.connect(self._handle_file_loaded)
@@ -241,47 +258,47 @@ class MonitorPlayer(QObject):
     def stop(self) -> None:
         self._reconnect_timer.stop()
         self._loading = False
-        self._try_command("stop")
+        self._command_async("stop")
         self._set_state(State.IDLE, "")
 
     def set_paused(self, paused: bool) -> None:
-        self._try_set("pause", "yes" if paused else "no")
+        self._set_async("pause", "yes" if paused else "no")
+
+    def set_loop(self, loop: bool) -> None:
+        self._set_async("loop-file", "inf" if loop else "no")
 
     def toggle_pause(self) -> None:
         self.set_paused(not self._paused)
 
     def seek_relative(self, seconds: float) -> None:
-        self._try_command("seek", seconds, "relative")
+        self._command_async("seek", seconds, "relative")
 
     def seek_absolute(self, seconds: float) -> None:
-        self._try_command("seek", max(0.0, seconds), "absolute")
+        self._command_async("seek", max(0.0, seconds), "absolute")
 
     def seek_percent(self, percent: float) -> None:
-        self._try_command("seek", max(0.0, min(100.0, percent)), "absolute-percent")
+        self._command_async("seek", max(0.0, min(100.0, percent)), "absolute-percent")
 
     def set_audible(self, audible: bool) -> None:
         self._audible = bool(audible)
-        self._try_set("mute", "no" if audible else "yes")
+        self._set_async("mute", "no" if audible else "yes")
 
     def set_volume(self, volume: int) -> None:
-        self._try_set("volume", max(0, min(130, int(volume))))
+        self._set_async("volume", max(0, min(130, int(volume))))
 
     def set_audio_device(self, device: str) -> None:
-        self._try_set("audio-device", device or "auto")
+        self._set_async("audio-device", device or "auto")
 
     def audio_devices(self) -> list[tuple[str, str]]:
-        try:
-            devs = self._mpv._get_property("audio-device-list") or []
-            return [(d.get("name", ""), d.get("description", d.get("name", ""))) for d in devs]
-        except Exception:
-            return [("auto", "Autoselect device")]
+        """The output devices, as last read by the poll thread (see the ``devices`` signal)."""
+        return list(self._devices)
 
     def set_osd_text(self, text: str) -> None:
-        self._try_set("osd-msg1", text or "")
+        self._set_async("osd-msg1", text or "")
 
     def apply_settings(self, settings: Settings) -> None:
         self.settings = settings
-        self._try_set("hwdec", "auto-safe" if settings.hwdec else "no")
+        self._set_async("hwdec", "auto-safe" if settings.hwdec else "no")
 
     def close(self) -> None:
         self._closing = True
@@ -295,17 +312,33 @@ class MonitorPlayer(QObject):
 
     # ---------------------------------------------------------------- mpv plumbing
 
-    def _try_set(self, name: str, value) -> None:
+    # The GUI thread must never wait for mpv's core: on Windows the core can be waiting for
+    # mpv's window thread, which can be waiting for a message the GUI thread has to answer
+    # (mpv's video window is a child of a Qt window). So everything the GUI thread asks for
+    # is queued with the asynchronous command API and the reply is ignored or logged.
+
+    def _set_async(self, name: str, value) -> None:
+        if isinstance(value, bool):
+            value = "yes" if value else "no"
+        self._command_async("set", name, str(value))
+
+    def _command_async(self, *args) -> None:
         try:
-            self._mpv[name] = value
-        except Exception as exc:
-            log.debug("option %s=%r rejected: %s", name, value, exc)
+            self._mpv.command_async(*args, callback=self._async_reply)
+        except Exception as exc:  # noqa: BLE001 (core already gone)
+            log.debug("async command %r not queued: %s", args, exc)
+
+    @staticmethod
+    def _async_reply(error, result):
+        if error:
+            log.debug("mpv command failed: %s", error)
+        return result
+
+    def _try_set(self, name: str, value) -> None:
+        self._set_async(name, value)
 
     def _try_command(self, *args) -> None:
-        try:
-            self._mpv.command(*args)
-        except Exception as exc:
-            log.debug("command %r failed: %s", args, exc)
+        self._command_async(*args)
 
     def _get(self, name: str, default=None):
         try:
@@ -323,15 +356,11 @@ class MonitorPlayer(QObject):
         self._last_meta = None
         self._last_pos = None
         self._pos_frozen_since = None
-        self._try_set("loop-file", "inf" if (src.loop and not src.is_stream) else "no")
-        self._try_set("pause", "no")
+        self._set_async("loop-file", "inf" if (src.loop and not src.is_stream) else "no")
+        self._set_async("pause", "no")
         self._set_state(State.CONNECTING if self._attempts == 0 else State.RECONNECTING,
                         "" if self._attempts == 0 else f"attempt {self._attempts + 1}")
-        try:
-            self._mpv.loadfile(src.url, "replace")
-        except Exception as exc:
-            self._set_state(State.ERROR, str(exc))
-            self._schedule_reconnect()
+        self._command_async("loadfile", src.url, "replace")
 
     def _on_log(self, level: str, prefix: str, text: str) -> None:
         text = text.strip()
@@ -414,6 +443,8 @@ class MonitorPlayer(QObject):
         while not self._stop.is_set():
             now = time.monotonic()
             try:
+                if not self._devices_read:
+                    self._read_static()
                 snap = self._read_levels(now)
                 if snap is not None:
                     self.levels.emit(snap)
@@ -432,6 +463,16 @@ class MonitorPlayer(QObject):
             except Exception:  # never let the meter thread die
                 log.exception("poll loop error")
             self._stop.wait(period)
+
+    def _read_static(self) -> None:
+        """Things that do not change: the libmpv version and the audio output list."""
+        self._devices_read = True
+        self.mpv_version = str(self._get("mpv-version", "libmpv"))
+        devs = self._get("audio-device-list") or []
+        found = [(d.get("name", ""), d.get("description", d.get("name", ""))) for d in devs if isinstance(d, dict)]
+        if found:
+            self._devices = found
+            self.devices.emit(found)
 
     def _read_levels(self, now: float) -> LevelSnapshot | None:
         if self._loading and self._state not in LOADED_STATES:

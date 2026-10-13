@@ -506,7 +506,7 @@ class SourceTile(QFrame):
 
     def _loop_toggled(self, checked: bool) -> None:
         self.source.loop = bool(checked)
-        self.player._try_set("loop-file", "inf" if (checked and not self.source.is_stream) else "no")
+        self.player.set_loop(bool(checked) and not self.source.is_stream)
 
     def _seek_pressed(self) -> None:
         self._dragging = True

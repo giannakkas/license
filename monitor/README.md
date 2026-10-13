@@ -53,6 +53,17 @@ Two identical signatures in a row mean the picture did not change (FROZEN after 
 a low mean brightness means BLACK; a grab that fails while playing means NO VIDEO.
 Alarms are suspended while a source is paused, stopped or reconnecting.
 
+## Threading rule
+
+Each tile embeds mpv's own video window inside a Qt window, and mpv drives that window
+from its own threads. On Windows a parent and child window owned by different threads
+exchange synchronous messages, so if the GUI thread ever waits for mpv's core while
+mpv's window thread waits for the GUI thread, both stop for good. Two rules keep that
+from happening: the GUI thread only ever *queues* commands to mpv (`command_async`,
+never a blocking property set or command; the poll thread does all the reading), and
+tiles are never re-parented or hidden/shown during a layout change unless their
+visibility really changes.
+
 ## How the meters work
 
 Each tile is its own libmpv instance. Two FFmpeg audio filters are inserted into mpv's
