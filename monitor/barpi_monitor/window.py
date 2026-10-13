@@ -8,13 +8,14 @@ import time
 from pathlib import Path
 
 from PySide6.QtCore import QByteArray, Qt, QTimer
-from PySide6.QtGui import QAction, QFont, QKeySequence
+from PySide6.QtGui import QAction, QFont, QKeySequence, QPixmap
 from PySide6.QtWidgets import (QApplication, QComboBox, QDockWidget, QFileDialog, QGridLayout, QLabel, QMainWindow,
                                QMessageBox, QPlainTextEdit, QSlider, QToolBar, QWidget)
 
 from . import APP_NAME, __version__, theme
 from .config import Config, Source, guess_name, is_url
 from .dialogs import VIDEO_FILTER, SettingsDialog, SourceDialog
+from .main import base_dir
 from .tile import SourceTile
 
 log = logging.getLogger(__name__)
@@ -108,43 +109,23 @@ class MainWindow(QMainWindow):
         return a
 
     def _build_toolbar(self) -> None:
-        tb = QToolBar("Main")
+        """Two rows: the logo with sources and view on top, playback and audio underneath."""
+        tb = QToolBar("Sources and view")
         tb.setMovable(False)
         tb.setToolButtonStyle(Qt.ToolButtonTextOnly)
         self.addToolBar(tb)
         act = lambda *a, **k: self._action(*a, toolbar=tb, **k)  # noqa: E731
 
+        logo = self._logo_label()
+        if logo is not None:
+            tb.addWidget(logo)
+            tb.addSeparator()
         act("Add stream…", self._add_url, "Ctrl+N", tip="Add a network stream by URL")
         act("Add files…", self._add_files, "Ctrl+O", tip="Add video files")
         act("Edit", self._edit_selected, "F2", tip="Edit the selected source")
         act("Remove", self._remove_selected, "Delete", tip="Remove the selected source")
         tb.addSeparator()
-        act("Play/Pause", self._play_pause_selected, "Space", tip="Play or pause the selected source")
-        act("Stop", self._stop_selected, tip="Stop the selected source")
-        act("Restart", self._restart_selected, "F5", tip="Reconnect / restart the selected source from the beginning")
-        self.act_pause_all = act("Pause all", self._pause_all, "Ctrl+Space", checkable=True,
-                                 tip="Pause every source; untick to resume them all")
-        tb.addSeparator()
-        self.act_mute = act("Mute all", self._toggle_mute_all, "M", checkable=True,
-                            tip="Silence the speakers (meters keep working)")
-        self.act_mute.setChecked(self.config.mute_all)
-        self.volume = QSlider(Qt.Horizontal)
-        self.volume.setRange(0, 130)
-        self.volume.setValue(self.config.settings.volume)
-        self.volume.setFixedWidth(100)
-        self.volume.setFocusPolicy(Qt.NoFocus)
-        self.volume.setToolTip("Monitor volume")
-        self.volume.valueChanged.connect(self._set_volume)
-        tb.addWidget(QLabel(" Vol "))
-        tb.addWidget(self.volume)
-        tb.addWidget(QLabel("  Audio out "))
-        self.device_combo = QComboBox()
-        self.device_combo.setMinimumWidth(160)
-        self.device_combo.setFocusPolicy(Qt.NoFocus)
-        self.device_combo.setToolTip("Which sound device plays the audible source")
-        self.device_combo.currentIndexChanged.connect(self._audio_device_changed)
-        tb.addWidget(self.device_combo)
-        tb.addWidget(QLabel("  Layout "))
+        tb.addWidget(QLabel(" Layout "))
         self.layout_combo = QComboBox()
         self.layout_combo.setFocusPolicy(Qt.NoFocus)
         self.layout_combo.addItem("Auto", 0)
@@ -154,12 +135,61 @@ class MainWindow(QMainWindow):
         self.layout_combo.setCurrentIndex(max(0, idx))
         self.layout_combo.currentIndexChanged.connect(self._layout_changed)
         tb.addWidget(self.layout_combo)
-        tb.addSeparator()
         self.act_log = act("Alarm log", self._toggle_log, "Ctrl+L", checkable=True, tip="Show the alarm log panel")
         self.act_fullscreen = act("Full screen", self._toggle_fullscreen, "F11", checkable=True)
         self.act_top = act("On top", self._toggle_on_top, checkable=True, tip="Keep this window above others")
+        tb.addSeparator()
         act("Settings…", self._open_settings, "Ctrl+,")
         act("Help", self._about, "F1")
+
+        self.addToolBarBreak()
+        tb2 = QToolBar("Playback and audio")
+        tb2.setMovable(False)
+        tb2.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self.addToolBar(tb2)
+        act2 = lambda *a, **k: self._action(*a, toolbar=tb2, **k)  # noqa: E731
+
+        act2("Play/Pause", self._play_pause_selected, "Space", tip="Play or pause the selected source")
+        act2("Stop", self._stop_selected, tip="Stop the selected source")
+        act2("Restart", self._restart_selected, "F5", tip="Reconnect / restart the selected source from the beginning")
+        self.act_pause_all = act2("Pause all", self._pause_all, "Ctrl+Space", checkable=True,
+                                  tip="Pause every source; untick to resume them all")
+        tb2.addSeparator()
+        self.act_mute = act2("Mute all", self._toggle_mute_all, "M", checkable=True,
+                             tip="Silence the speakers (meters keep working)")
+        self.act_mute.setChecked(self.config.mute_all)
+        self.volume = QSlider(Qt.Horizontal)
+        self.volume.setRange(0, 130)
+        self.volume.setValue(self.config.settings.volume)
+        self.volume.setFixedWidth(110)
+        self.volume.setFocusPolicy(Qt.NoFocus)
+        self.volume.setToolTip("Monitor volume")
+        self.volume.valueChanged.connect(self._set_volume)
+        tb2.addWidget(QLabel(" Vol "))
+        tb2.addWidget(self.volume)
+        tb2.addWidget(QLabel("  Audio out "))
+        self.device_combo = QComboBox()
+        self.device_combo.setMinimumWidth(180)
+        self.device_combo.setFocusPolicy(Qt.NoFocus)
+        self.device_combo.setToolTip("Which sound device plays the audible source")
+        self.device_combo.currentIndexChanged.connect(self._audio_device_changed)
+        tb2.addWidget(self.device_combo)
+
+    def _logo_label(self, height: int = 34) -> QLabel | None:
+        """The owner's logo for the left of the toolbar, rendered sharp on high-DPI screens."""
+        path = base_dir() / "assets" / "logo.png"
+        pm = QPixmap(str(path))
+        if pm.isNull():
+            return None
+        dpr = self.devicePixelRatioF() or 1.0
+        scaled = pm.scaledToHeight(int(round(height * dpr)), Qt.SmoothTransformation)
+        scaled.setDevicePixelRatio(dpr)
+        label = QLabel()
+        label.setPixmap(scaled)
+        label.setContentsMargins(8, 3, 10, 3)
+        label.setToolTip(APP_NAME)
+        label.setStyleSheet("background: transparent;")
+        return label
 
     def _build_alarm_log(self) -> None:
         self.log_view = QPlainTextEdit()

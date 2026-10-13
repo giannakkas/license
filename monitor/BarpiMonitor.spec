@@ -21,6 +21,7 @@ if sys.platform == "win32":
 datas = [
     (str(spec_dir / "assets" / "icon.png"), "assets"),
     (str(spec_dir / "assets" / "icon.ico"), "assets"),
+    (str(spec_dir / "assets" / "logo.png"), "assets"),
 ]
 
 a = Analysis(
