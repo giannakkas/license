@@ -13,7 +13,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
     orderBy: { name: "asc" },
     include: {
       licenses: {
-        select: { status: true, expiresAt: true, product: { select: { name: true } }, systems: { select: { status: true, lastSeenAt: true, mode: true } } },
+        select: { status: true, expiresAt: true, product: { select: { name: true } }, systems: { select: { status: true, lastSeenAt: true, mode: true, appVersion: true } } },
       },
     },
   });
@@ -31,13 +31,17 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
         ) : (
           <table>
             <thead>
-              <tr><th>Customer</th><th>Contact</th><th>Software</th><th>Licences</th><th>Computers</th><th>Last seen</th><th></th></tr>
+              <tr><th>Customer</th><th>Contact</th><th>Software</th><th>Licences</th><th>Computers</th><th>Versions</th><th>Last seen</th><th></th></tr>
             </thead>
             <tbody>
               {customers.map((c) => {
                 const s = summarise(c.licenses);
                 const softwares = [...new Set(c.licenses.map((l) => l.product.name))];
-                const last = latestSeen(c.licenses.flatMap((l) => l.systems));
+                const systems = c.licenses.flatMap((l) => l.systems);
+                const last = latestSeen(systems);
+                const versionCounts = Object.entries(
+                  systems.reduce<Record<string, number>>((m, sys) => ({ ...m, [sys.appVersion ?? "?"]: (m[sys.appVersion ?? "?"] ?? 0) + 1 }), {}),
+                ).sort((a, b) => b[0].localeCompare(a[0], undefined, { numeric: true }));
                 return (
                   <tr key={c.id}>
                     <td><Link href={`/customers/${c.id}`} className="font-semibold text-[#93c5fd] hover:underline">{c.name}</Link></td>
@@ -51,6 +55,9 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
                     <td>
                       {s.computers}
                       {s.online > 0 && <span className="ml-2 text-xs text-[#4ade80]">{s.online} online</span>}
+                    </td>
+                    <td className="text-xs">
+                      {versionCounts.length ? versionCounts.map(([v, n]) => `${v} × ${n}`).join(" · ") : <span className="muted">—</span>}
                     </td>
                     <td className={last && isOnline(last) ? "text-[#4ade80]" : "muted"}>{timeAgo(last)}</td>
                     <td className="text-right"><Link href={`/customers/${c.id}`} className="btn btn-small">Edit</Link></td>

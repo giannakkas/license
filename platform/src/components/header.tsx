@@ -17,6 +17,7 @@ export async function Header() {
           <nav className="ml-auto flex items-center gap-4 text-sm">
             <Link href="/" className="hover:underline">Licences</Link>
             <Link href="/customers" className="hover:underline">Customers</Link>
+            <Link href="/computers" className="hover:underline">Computers</Link>
             <Link href="/products" className="hover:underline">Software</Link>
             <Link href="/events" className="hover:underline">Activity</Link>
             <form method="post" action="/api/auth/logout">

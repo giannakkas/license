@@ -6,6 +6,8 @@ import { NewLicenseForm } from "@/components/license-form";
 import { LicenseTable } from "@/components/license-table";
 import { NoticeBox } from "@/components/notice-box";
 import { ReleaseUpload } from "@/components/release-upload";
+import { VersionSummary } from "@/components/version-summary";
+import { loadComputers, versionSummary } from "@/lib/computers";
 import { prisma } from "@/lib/db";
 import { fmtDate, fmtDay } from "@/lib/format";
 import { fmtSize } from "@/lib/releases";
@@ -22,7 +24,7 @@ export default async function ProductPage({
 }) {
   const { id } = await params;
   const { error, notice } = await searchParams;
-  const [product, products, customers] = await Promise.all([
+  const [product, products, customers, computers] = await Promise.all([
     prisma.product.findUnique({
       where: { id },
       include: {
@@ -39,6 +41,7 @@ export default async function ProductPage({
     }),
     prisma.product.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
     prisma.customer.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    loadComputers({ license: { productId: id } }),
   ]);
   if (!product) notFound();
   const s = summarise(product.licenses);
@@ -62,6 +65,14 @@ export default async function ProductPage({
 
       <ErrorBox message={error} />
       <NoticeBox message={notice} />
+
+      <section className="panel p-4">
+        <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="font-bold">Versions in use</h2>
+          <Link href={`/computers?product=${product.slug}`} className="text-xs text-[#93c5fd] hover:underline">See every computer</Link>
+        </div>
+        <VersionSummary groups={versionSummary(computers)} showProduct={false} />
+      </section>
 
       <section className="panel">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#2a2f3a] px-4 py-3">

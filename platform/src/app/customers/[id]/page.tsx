@@ -3,8 +3,11 @@ import { notFound } from "next/navigation";
 import { ConfirmButton } from "@/components/confirm-button";
 import { ErrorBox } from "@/components/error-box";
 import { NoticeBox } from "@/components/notice-box";
+import { VersionSummary } from "@/components/version-summary";
 import { NewLicenseForm } from "@/components/license-form";
+import { ComputerTable } from "@/components/computer-table";
 import { LicenseTable } from "@/components/license-table";
+import { loadComputers, versionSummary } from "@/lib/computers";
 import { prisma } from "@/lib/db";
 import { fmtDate } from "@/lib/format";
 import { summarise } from "@/lib/stats";
@@ -20,7 +23,7 @@ export default async function CustomerPage({
 }) {
   const { id } = await params;
   const { error, notice } = await searchParams;
-  const [customer, products, customers] = await Promise.all([
+  const [customer, products, customers, computers] = await Promise.all([
     prisma.customer.findUnique({
       where: { id },
       include: {
@@ -36,6 +39,7 @@ export default async function CustomerPage({
     }),
     prisma.product.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
     prisma.customer.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    loadComputers({ license: { customerId: id } }),
   ]);
   if (!customer) notFound();
   const s = summarise(customer.licenses);
@@ -54,6 +58,14 @@ export default async function CustomerPage({
 
       <ErrorBox message={error} />
       <NoticeBox message={notice} />
+
+      <section className="panel">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#2a2f3a] px-4 py-3">
+          <h2 className="font-bold">{`Computers (${computers.length})`}</h2>
+          <div className="min-w-0"><VersionSummary groups={versionSummary(computers)} /></div>
+        </div>
+        <ComputerTable computers={computers} showCustomer={false} empty="No computer of this customer has activated yet." />
+      </section>
 
       <section className="panel">
         <div className="border-b border-[#2a2f3a] px-4 py-3"><h2 className="font-bold">Licences</h2></div>

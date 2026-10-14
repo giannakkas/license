@@ -118,7 +118,7 @@ model Event {
   licenseId String?
   license   License? @relation(fields: [licenseId], references: [id], onDelete: SetNull)
   systemId  String?
-  /// created | updated | extended | activated | deactivated | locked | unlocked | revoked | removed | refused | deleted | customer | software | file | release
+  /// created | updated | extended | activated | deactivated | locked | unlocked | revoked | removed | refused | deleted | customer | software | file | release | version
   kind      String
   detail    String?
   ip        String?

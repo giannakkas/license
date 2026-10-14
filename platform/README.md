@@ -67,6 +67,19 @@ program must send that slug as `product` in every device call; the software page
 exact body. Keys are created per customer and software from the Licences page, or from the
 customer's or the software's own page.
 
+## Computers
+
+**Computers** (top menu) lists every activated PC across customers and software: name, OS,
+IP and computer ID, customer, software, the version it runs (with *update waiting* or *must
+update* against the newest build and the minimum version), the licence and how it is held
+(online key or offline file), online/offline/locked, the date it was first activated and its
+last check-in. Filter by customer, software, version or state, or search by name, ID or IP.
+"Versions in use" counts the PCs on each version per software (green newest, amber update
+waiting, red below the minimum). Each customer's page shows the same for that customer, the
+Customers list a per-customer version count, and each software page its versions in use.
+When a PC reports a different version than before, the activity log records it
+(`version: PC082 1.4.1 → 1.4.2`).
+
 ## Offline licence files
 
 A computer without internet cannot activate a key, so the platform issues it a signed file

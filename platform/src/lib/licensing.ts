@@ -133,7 +133,8 @@ export async function activate(input: DeviceInput, ip: string): Promise<DeviceRe
     system = await prisma.system.create({ data: { licenseId: license.id, machineId, tokenHash: "pending", ...details } });
     await record("activated", license.id, system.id, `${details.hostname ?? machineId} (${details.os ?? "?"}) v${details.appVersion ?? "?"}`, ip);
   } else {
-    await record("activated", license.id, system.id, `re-activated ${details.hostname ?? machineId}`, ip);
+    const change = system.appVersion && details.appVersion && system.appVersion !== details.appVersion ? `, ${system.appVersion} → ${details.appVersion}` : "";
+    await record("activated", license.id, system.id, `re-activated ${details.hostname ?? machineId}${change}`, ip);
   }
   const token = makeToken(license.id, machineId, system.id);
   system = await prisma.system.update({ where: { id: system.id }, data: { tokenHash: hashToken(token), ...details } });
@@ -157,6 +158,10 @@ export async function heartbeat(input: DeviceInput, ip: string): Promise<DeviceR
     return reply(401, "unknown", "The activation on this computer is no longer valid. Activate it again.");
   }
   const verdict = licenseVerdict(license);
+  const reported = str(input.version, 40);
+  if (reported && system.appVersion && reported !== system.appVersion) {
+    await record("version", license.id, system.id, `${str(input.hostname, 80) || system.hostname || machineId} ${system.appVersion} → ${reported}`, ip);
+  }
   const updated = await prisma.system.update({
     where: { id: system.id },
     data: {
@@ -186,6 +191,11 @@ export async function deactivate(input: DeviceInput, ip: string): Promise<Device
   await prisma.system.delete({ where: { id: system.id } });
   await record("deactivated", license.id, system.id, `${system.hostname ?? machineId} deactivated itself`, ip);
   return reply(200, "ok", "Deactivated.");
+}
+
+/** The moment before which a check-in no longer counts as online. */
+export function onlineCutoff(): Date {
+  return new Date(Date.now() - checkInterval() * 2 * 1000);
 }
 
 /** A computer counts as online when it has checked in within two intervals. */
