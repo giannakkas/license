@@ -1,4 +1,4 @@
-"""``BarpiMonitor.exe --self-test``: proves the packaged program can load libmpv, meter audio and draw.
+"""``MonitoringApp.exe --self-test``: proves the packaged program can load libmpv, meter audio and draw.
 
 Used by the CI build and handy on a new PC. Exit code 0 means every check passed.
 """

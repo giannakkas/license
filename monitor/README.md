@@ -6,7 +6,7 @@ or files in a grid, one of them audible, every one metered, with SILENCE and NO 
 alarms.
 
 It lives in this repository because the newsroom asked for it, but it is independent
-of the Barpi web app: Python, Qt and libmpv, packaged as a single `BarpiMonitor.exe`. The window is titled "Monitoring Application".
+of the Barpi web app: Python, Qt and libmpv, packaged as a single `MonitoringApp.exe`. The window is titled "Monitoring Application".
 
 ![Barpi Monitor](assets/screenshot.png)
 
@@ -19,9 +19,9 @@ Builds from `main` (and manual runs of the workflow) are published as the
 https://github.com/giannakkas/barpi/releases/tag/monitor-latest
 
 Builds from other branches are kept as a workflow artifact instead: open the run under
-*Actions → Build Barpi Monitor (Windows exe)* and download `BarpiMonitor-<version>-win64`.
+*Actions → Build Monitoring Application (Windows exe)* and download `MonitoringApp-<version>-win64`.
 
-Take `BarpiMonitor.exe` (or the zip, which adds a short README). It needs nothing
+Take `MonitoringApp.exe` (or the zip, which adds a short README). It needs nothing
 installed. The exe is not code-signed, so SmartScreen will ask once: *More info → Run anyway*.
 
 ## What it does
@@ -118,7 +118,7 @@ python -m pytest tests
 
 **On GitHub:** *Actions → Build Barpi Monitor (Windows exe) → Run workflow*. The job
 downloads the current libmpv Windows build, runs the unit tests, runs PyInstaller, runs
-`BarpiMonitor.exe --self-test` on the result, and publishes the release.
+`MonitoringApp.exe --self-test` on the result, and publishes the release.
 
 **On a Windows PC** with Python 3.11+:
 
@@ -126,7 +126,7 @@ downloads the current libmpv Windows build, runs the unit tests, runs PyInstalle
 powershell -ExecutionPolicy Bypass -File monitor\build.ps1
 ```
 
-The result is `monitor\dist\BarpiMonitor.exe`. The script fetches `libmpv-2.dll` from
+The result is `monitor\dist\MonitoringApp.exe`. The script fetches `libmpv-2.dll` from
 the mpv Windows builds on GitHub (zhongfly/mpv-winbuild, falling back to
 shinchiro/mpv-winbuild-cmake); pass `-MpvArchiveUrl` to pin a particular archive.
 
@@ -134,7 +134,7 @@ shinchiro/mpv-winbuild-cmake); pass `-MpvArchiveUrl` to pin a particular archive
 
 ```bash
 sudo apt install wine64 p7zip-full gcc-mingw-w64-x86-64
-monitor/build-wine.sh        # result: monitor/build-wine/dist/BarpiMonitor.exe
+monitor/build-wine.sh        # result: monitor/build-wine/dist/MonitoringApp.exe
 ```
 
 It runs the Windows Python and PyInstaller under Wine, builds a stub for the Windows
@@ -152,14 +152,14 @@ the Windows build produces.
 | `barpi_monitor/tile.py` | video surface + meter + transport bar + footer + alarm logic for one source |
 | `barpi_monitor/window.py` | grid, toolbar, transport keys, alarm log (panel and CSV), drag & drop, persistence |
 | `barpi_monitor/selftest.py` | `--self-test` |
-| `BarpiMonitor.spec` | PyInstaller recipe |
+| `MonitoringApp.spec` | PyInstaller recipe |
 | `build.ps1` | local Windows build |
 | `../.github/workflows/build-monitor.yml` | CI build and release |
 
 The logo at the left of the toolbar is `assets/logo.png` (transparent PNG, any size; it is
 scaled to the bar). `tools/key_logo.py` cuts a logo out of a baked-in checkerboard background.
 
-Settings and sources: `%APPDATA%\BarpiMonitor\config.json`. Log: `monitor.log` next to it; alarms: `alarms.csv`.
+Settings and sources: `%APPDATA%\BarpiMonitor\config.json` (the folder keeps its original name so existing installs keep their licence and settings). Log: `monitor.log` next to it; alarms: `alarms.csv`.
 
 ## Troubleshooting
 

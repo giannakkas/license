@@ -1,4 +1,4 @@
-name: Build Barpi Monitor (Windows exe)
+name: Build Monitoring Application (Windows exe)
 
 # Every branch builds and self-tests the exe (kept as a workflow artifact);
 # only main and manual runs publish the monitor-latest release (see the last step).
@@ -64,12 +64,12 @@ jobs:
         run: python -m pytest monitor/tests -q
 
       - name: Build the exe
-        run: pyinstaller monitor/BarpiMonitor.spec --noconfirm --clean --distpath monitor/dist --workpath monitor/build
+        run: pyinstaller monitor/MonitoringApp.spec --noconfirm --clean --distpath monitor/dist --workpath monitor/build
 
       - name: Self-test the built exe
         run: |
           $cfg = Join-Path $env:RUNNER_TEMP "bm\config.json"
-          $p = Start-Process -FilePath (Resolve-Path monitor/dist/BarpiMonitor.exe) -ArgumentList @("--self-test", "--config", "`"$cfg`"") -Wait -PassThru
+          $p = Start-Process -FilePath (Resolve-Path monitor/dist/MonitoringApp.exe) -ArgumentList @("--self-test", "--config", "`"$cfg`"") -Wait -PassThru
           $log = Join-Path (Split-Path $cfg) "self-test.log"
           if (Test-Path $log) { Get-Content $log } else { Write-Host "no self-test log written" }
           if ($p.ExitCode -ne 0) { throw "self-test exit code $($p.ExitCode)" }
@@ -78,21 +78,21 @@ jobs:
         id: package
         run: |
           $version = python -c "import sys; sys.path.insert(0,'monitor'); import barpi_monitor; print(barpi_monitor.__version__)"
-          $stage = "monitor/dist/BarpiMonitor-$version-win64"
+          $stage = "monitor/dist/MonitoringApp-$version-win64"
           New-Item -ItemType Directory -Force $stage | Out-Null
-          Copy-Item monitor/dist/BarpiMonitor.exe $stage/
+          Copy-Item monitor/dist/MonitoringApp.exe $stage/
           Copy-Item monitor/README-WINDOWS.txt $stage/README.txt
           Copy-Item monitor/vendor/LIBMPV-VERSION.txt $stage/
           Compress-Archive -Path "$stage/*" -DestinationPath "$stage.zip" -Force
           "version=$version" >> $env:GITHUB_OUTPUT
           "zip=$stage.zip" >> $env:GITHUB_OUTPUT
-          Get-Item monitor/dist/BarpiMonitor.exe, "$stage.zip" | Select-Object Name, Length
+          Get-Item monitor/dist/MonitoringApp.exe, "$stage.zip" | Select-Object Name, Length
 
       - uses: actions/upload-artifact@v4
         with:
-          name: BarpiMonitor-${{ steps.package.outputs.version }}-win64
+          name: MonitoringApp-${{ steps.package.outputs.version }}-win64
           path: |
-            monitor/dist/BarpiMonitor.exe
+            monitor/dist/MonitoringApp.exe
             ${{ steps.package.outputs.zip }}
           if-no-files-found: error
 
@@ -102,11 +102,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $v = "${{ steps.package.outputs.version }}"
-          $notes = "Barpi Monitor $v, built from ${{ github.sha }} (branch ${{ github.ref_name }}).`n`n" +
-                   "Download BarpiMonitor.exe (or the zip, which includes a README). libmpv: $(Get-Content monitor/vendor/LIBMPV-VERSION.txt)`n`n" +
+          $notes = "Monitoring Application $v, built from ${{ github.sha }} (branch ${{ github.ref_name }}).`n`n" +
+                   "Download MonitoringApp.exe (or the zip, which includes a README). libmpv: $(Get-Content monitor/vendor/LIBMPV-VERSION.txt)`n`n" +
                    "Windows SmartScreen may warn because the exe is not code-signed: choose More info > Run anyway."
           $ErrorActionPreference = "Continue"
           try { gh release delete monitor-latest --cleanup-tag --yes } catch { Write-Host "no previous release to replace" }
           $ErrorActionPreference = "Stop"
-          gh release create monitor-latest --target ${{ github.sha }} --prerelease --title "Barpi Monitor $v (latest build)" --notes "$notes" monitor/dist/BarpiMonitor.exe "${{ steps.package.outputs.zip }}"
+          gh release create monitor-latest --target ${{ github.sha }} --prerelease --title "Monitoring Application $v (latest build)" --notes "$notes" monitor/dist/MonitoringApp.exe "${{ steps.package.outputs.zip }}"
           Write-Host "Published: https://github.com/${{ github.repository }}/releases/tag/monitor-latest"

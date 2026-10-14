@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller build: one BarpiMonitor.exe with Qt and libmpv inside.
+"""PyInstaller build: one MonitoringApp.exe with Qt and libmpv inside.
 
-    pyinstaller monitor/BarpiMonitor.spec --noconfirm
+    pyinstaller monitor/MonitoringApp.spec --noconfirm
 
 libmpv-2.dll must be in monitor/vendor/ first (build.ps1 and the GitHub workflow fetch it).
 """
@@ -52,7 +52,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name="BarpiMonitor",
+    name="MonitoringApp",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

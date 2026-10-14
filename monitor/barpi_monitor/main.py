@@ -50,7 +50,7 @@ def setup_logging(log_dir: Path) -> None:
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(prog="BarpiMonitor", description=f"{APP_NAME}: video monitor with audio level meters")
+    parser = argparse.ArgumentParser(prog="MonitoringApp", description=f"{APP_NAME}: video monitor with audio level meters")
     parser.add_argument("sources", nargs="*", help="stream URLs or video files to add on start-up")
     parser.add_argument("-c", "--config", help="path to the config file (default: per-user app data)")
     parser.add_argument("--self-test", action="store_true", help="check libmpv, metering and Qt, then exit")
@@ -104,7 +104,7 @@ def main(argv: list[str] | None = None) -> int:
     except MpvUnavailable as exc:
         QMessageBox.critical(None, APP_NAME,
                              "The playback engine (libmpv-2.dll) could not be loaded.\n\n"
-                             "Put libmpv-2.dll next to BarpiMonitor.exe, or reinstall.\n\n"
+                             "Put libmpv-2.dll next to MonitoringApp.exe, or reinstall.\n\n"
                              f"Details: {exc}")
         return 2
 

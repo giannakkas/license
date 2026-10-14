@@ -1,6 +1,6 @@
-# Builds BarpiMonitor.exe on a Windows PC.  Needs Python 3.11+ on PATH.
+# Builds MonitoringApp.exe on a Windows PC.  Needs Python 3.11+ on PATH.
 #   powershell -ExecutionPolicy Bypass -File monitor\build.ps1
-# Result: monitor\dist\BarpiMonitor.exe
+# Result: monitor\dist\MonitoringApp.exe
 param(
     # A libmpv "mpv-dev-x86_64-*.7z" archive. Leave empty to fetch the latest build from GitHub.
     [string]$MpvArchiveUrl = ""
@@ -50,11 +50,11 @@ if (-not (Test-Path vendor\libmpv-2.dll)) {
 if (-not (Test-Path vendor\libmpv-2.dll)) { throw "vendor\libmpv-2.dll is still missing" }
 
 python -m pytest tests -q
-pyinstaller BarpiMonitor.spec --noconfirm --clean
+pyinstaller MonitoringApp.spec --noconfirm --clean
 
 Write-Host "Running the self-test..."
-$cfg = Join-Path $env:TEMP "BarpiMonitorSelfTest\config.json"
-$p = Start-Process -FilePath (Resolve-Path dist\BarpiMonitor.exe) -ArgumentList @("--self-test", "--config", "`"$cfg`"") -Wait -PassThru
+$cfg = Join-Path $env:TEMP "MonitoringAppSelfTest\config.json"
+$p = Start-Process -FilePath (Resolve-Path dist\MonitoringApp.exe) -ArgumentList @("--self-test", "--config", "`"$cfg`"") -Wait -PassThru
 Get-Content (Join-Path (Split-Path $cfg) "self-test.log")
 if ($p.ExitCode -ne 0) { throw "Self-test failed with exit code $($p.ExitCode)" }
-Write-Host "Built dist\BarpiMonitor.exe"
+Write-Host "Built dist\MonitoringApp.exe"

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Cross-builds BarpiMonitor.exe on Linux with Wine, for when no Windows machine or runner is
+# Cross-builds MonitoringApp.exe on Linux with Wine, for when no Windows machine or runner is
 # at hand. Verified on Ubuntu 24.04 with wine 9.0; the result passes the exe's own --self-test
 # under Wine and is the same PyInstaller bundle the Windows build produces.
 #
 #   sudo apt install wine64 p7zip-full gcc-mingw-w64-x86-64 curl python3
-#   monitor/build-wine.sh            # result: monitor/build-wine/dist/BarpiMonitor.exe
+#   monitor/build-wine.sh            # result: monitor/build-wine/dist/MonitoringApp.exe
 #
 # Steps: Windows Python (embeddable) + pip under Wine -> Windows wheels of PySide6, python-mpv
 # and PyInstaller -> libmpv-2.dll from the mpv Windows builds -> a stub for the Windows system
@@ -77,14 +77,14 @@ wpy -m pytest "$(winepath -w "$HERE/tests")" -q | tail -1
 
 echo "== PyInstaller"
 rm -rf "$WORK/dist" "$WORK/build"
-( cd "$HERE" && wpy -m PyInstaller BarpiMonitor.spec --noconfirm --clean \
+( cd "$HERE" && wpy -m PyInstaller MonitoringApp.spec --noconfirm --clean \
     --distpath "$(winepath -w "$WORK/dist")" --workpath "$(winepath -w "$WORK/build")" ) \
     | tee "$WORK/pyinstaller.log" | grep -E 'ERROR|Build complete' || true
-[ -f "$WORK/dist/BarpiMonitor.exe" ] || { echo "build failed; see $WORK/pyinstaller.log"; exit 1; }
+[ -f "$WORK/dist/MonitoringApp.exe" ] || { echo "build failed; see $WORK/pyinstaller.log"; exit 1; }
 
 echo "== self-test of the built exe (under Wine)"
 rm -f "$WORK/selftest/self-test.log"
-timeout 600 wine "$WORK/dist/BarpiMonitor.exe" --self-test --config "$(winepath -w "$WORK/selftest/config.json")" </dev/null >/dev/null 2>&1 || true
+timeout 600 wine "$WORK/dist/MonitoringApp.exe" --self-test --config "$(winepath -w "$WORK/selftest/config.json")" </dev/null >/dev/null 2>&1 || true
 cat "$WORK/selftest/self-test.log"
 grep -q '^ALL PASSED' "$WORK/selftest/self-test.log"
-ls -la "$WORK/dist/BarpiMonitor.exe"
+ls -la "$WORK/dist/MonitoringApp.exe"

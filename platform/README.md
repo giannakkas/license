@@ -104,7 +104,7 @@ npx prisma migrate deploy
 npm run dev                     # http://localhost:3006
 ```
 
-To point a program at it: `BarpiMonitor.exe --license-server http://localhost:3006`
+To point a program at it: `MonitoringApp.exe --license-server http://localhost:3006`
 (or set `BARPI_LICENSE_SERVER`).
 
 ## Environment

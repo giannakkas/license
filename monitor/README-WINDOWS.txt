@@ -1,10 +1,10 @@
-Monitoring Application (BarpiMonitor.exe)
-==========================================
+Monitoring Application (MonitoringApp.exe)
+===========================================
 
 A video monitor for the newsroom: several streams or files side by side, each with
 live audio level meters, a SILENCE alarm and a NO SIGNAL alarm.
 
-Run BarpiMonitor.exe. On the first start it asks for the licence key
+Run MonitoringApp.exe. On the first start it asks for the licence key
 (ONCUE-XXXXX-XXXXX-XXXXX-XXXXX) that was issued on license.oncue.cy; the key is
 checked online and this computer is registered to it. From then on the program
 checks in every 5 minutes. If the licence or this computer is locked on the
@@ -31,7 +31,7 @@ Adding sources
   Ctrl+O   add video files (they loop by default)
   or drag files / URLs onto the window
   You can also start it with sources on the command line:
-      BarpiMonitor.exe rtsp://10.0.0.5/live "D:\clips\promo.mp4"
+      MonitoringApp.exe rtsp://10.0.0.5/live "D:\clips\promo.mp4"
 
 Playback
   Each tile has Play/Pause, Stop and Loop buttons and a position bar (files only).
