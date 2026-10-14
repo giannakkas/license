@@ -51,6 +51,16 @@ activation dialog. While not allowed to run, the window shows a lock screen and 
 is stopped. If the platform is unreachable the last answer holds for 72 hours.
 `--license-server URL` (or `BARPI_LICENSE_SERVER`) points a build at another platform.
 
+**Updates.** Every check-in answer also names the newest build of this software on the
+platform (`latest`: version, URL, SHA-256, size) and an optional `min_version`. When the
+build is newer, the toolbar shows *Update to x.y.z*; `barpi_monitor/updater.py` downloads it
+next to the exe, discards it unless size and SHA-256 match, moves the running exe aside
+(`MonitoringApp.old.exe`, removed on the next start) and starts the new one with
+`PYINSTALLER_RESET_ENVIRONMENT=1`. Below `min_version` the update starts by itself. If the
+running exe cannot be renamed, a small `.cmd` helper finishes the swap after exit. A build
+whose label on the platform is higher than the version it reports is installed once and not
+offered again, so a mislabelled upload cannot cause an update loop.
+
 Computers without internet import an *offline licence file* (`.lic`) instead of a key: the
 platform signs a payload (key, software slug, customer, computer id, expiry) with its RSA-2048
 key and the program verifies it with the public modulus in `license.py` (`PUBLIC_KEY_N`,

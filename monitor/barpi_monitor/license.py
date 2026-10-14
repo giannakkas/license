@@ -25,6 +25,7 @@ import json
 import logging
 import os
 import platform
+import re
 import socket
 import sys
 import time
@@ -33,6 +34,7 @@ from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib import error, request
+from urllib.parse import urljoin
 
 from . import __version__
 
@@ -151,6 +153,14 @@ class LicenseState:
     file_issued_at: str = ""    # offline file: when the platform issued it
     file_expires_at: str = ""   # offline file: when it stops working
     clock_mark: float = 0.0     # the latest clock reading seen; guards against setting the clock back
+    # The newest build of this software on the platform, as the last check-in reported it.
+    update_version: str = ""
+    update_url: str = ""
+    update_sha256: str = ""
+    update_size: int = 0
+    update_notes: str = ""
+    min_version: str = ""       # older versions must update (set per software on the platform)
+    installed_update: str = ""  # the version label of the build this program last installed itself
 
     @classmethod
     def load(cls, path: Path) -> "LicenseState":
@@ -310,6 +320,24 @@ class LicenseClient:
     def usable(self) -> bool:
         return self.effective_status()[0] in USABLE
 
+    def update_offer(self, current: str = __version__) -> dict | None:
+        """The newer build to offer, or None. ``required`` when this version is below the minimum."""
+        st = self.state
+        if not st.update_version or not st.update_url or not is_newer(st.update_version, current):
+            return None
+        if st.installed_update == st.update_version:
+            # This build was installed once already and still reports an older version: it is
+            # mislabelled on the platform, so offering it again would update in a loop.
+            return None
+        return {
+            "version": st.update_version,
+            "url": urljoin(st.server.rstrip("/") + "/", st.update_url),
+            "sha256": st.update_sha256,
+            "size": st.update_size,
+            "notes": st.update_notes,
+            "required": bool(st.min_version) and is_newer(st.min_version, current),
+        }
+
     def tick(self, now: float | None = None) -> None:
         """Remember the latest clock reading (saved every few minutes) for the set-back guard."""
         now = time.time() if now is None else now
@@ -446,12 +474,45 @@ class LicenseClient:
             st.interval_s = max(30, int(body.get("interval", st.interval_s)))
         except (TypeError, ValueError):
             pass
+        self._apply_update_info(body)
+
+    def _apply_update_info(self, body: dict) -> None:
+        """Platforms that know about builds send ``latest`` and ``min_version``; older ones send neither."""
+        st = self.state
+        if "latest" in body:
+            latest = body.get("latest")
+            if isinstance(latest, dict) and latest.get("version") and latest.get("url"):
+                st.update_version = str(latest["version"])[:40]
+                st.update_url = str(latest["url"])[:500]
+                st.update_sha256 = str(latest.get("sha256", "") or "")[:64]
+                try:
+                    st.update_size = max(0, int(latest.get("size", 0) or 0))
+                except (TypeError, ValueError):
+                    st.update_size = 0
+                st.update_notes = str(latest.get("notes", "") or "")[:500]
+            else:
+                st.update_version = st.update_url = st.update_sha256 = st.update_notes = ""
+                st.update_size = 0
+        if "min_version" in body:
+            st.min_version = str(body.get("min_version") or "")[:40]
 
     def save(self) -> None:
         try:
             self.state.save(self.path)
         except OSError as exc:
             log.warning("could not save licence state: %s", exc)
+
+
+def version_tuple(text: str) -> tuple[int, ...]:
+    """'1.4.0' -> (1, 4, 0); anything without digits -> (0,)."""
+    parts = [int(p) for p in re.findall(r"\d+", str(text or ""))[:4]]
+    return tuple(parts) or (0,)
+
+
+def is_newer(candidate: str, current: str) -> bool:
+    a, b = version_tuple(candidate), version_tuple(current)
+    width = max(len(a), len(b))
+    return a + (0,) * (width - len(a)) > b + (0,) * (width - len(b))
 
 
 def license_path(config_dir: Path) -> Path:

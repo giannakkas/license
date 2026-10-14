@@ -13,7 +13,7 @@ import { hashToken, makeToken, normaliseKey, tokenMatches } from "@/lib/keys";
 export const DEFAULT_PRODUCT = DEFAULT_PRODUCT_SLUG;
 
 /** The relation data the device replies need: which software the key is for and who holds it. */
-const LICENSE_INCLUDE = { product: { select: { slug: true, name: true } }, customer: { select: { name: true } } } as const;
+const LICENSE_INCLUDE = { product: { select: { id: true, slug: true, name: true, minVersion: true } }, customer: { select: { name: true } } } as const;
 
 export type DeviceReply = { code: number; body: Record<string, unknown> };
 
@@ -47,7 +47,7 @@ type LicenseRow = {
   lockMessage: string | null;
   label: string | null;
   maxSeats: number;
-  product: { slug: string; name: string };
+  product: { id: string; slug: string; name: string; minVersion: string | null };
   customer: { name: string };
 };
 
@@ -67,6 +67,28 @@ function okOrLocked(license: LicenseRow, system: { status: string; lockMessage: 
     return reply(200, "locked", system.lockMessage || "This computer has been locked by the administrator.", extra);
   }
   return reply(200, "active", "", extra);
+}
+
+/**
+ * What the program needs to update itself: the newest build of its software (download URL,
+ * SHA-256 and size so it can verify the file) and the minimum version the administrator set.
+ */
+export async function updateInfo(product: { id: string; slug: string; minVersion: string | null }) {
+  const release = await prisma.release.findFirst({ where: { productId: product.id }, orderBy: { createdAt: "desc" } });
+  const base = (process.env.PUBLIC_URL || "").replace(/\/$/, "");
+  return {
+    latest: release
+      ? {
+          version: release.version,
+          url: `${base}/download/${product.slug}/${release.id}`,
+          sha256: release.sha256,
+          size: release.size,
+          filename: release.filename,
+          notes: release.notes ?? "",
+        }
+      : null,
+    min_version: product.minVersion,
+  };
 }
 
 async function record(kind: string, licenseId: string | null, systemId: string | null, detail: string, ip: string) {
@@ -115,7 +137,12 @@ export async function activate(input: DeviceInput, ip: string): Promise<DeviceRe
   }
   const token = makeToken(license.id, machineId, system.id);
   system = await prisma.system.update({ where: { id: system.id }, data: { tokenHash: hashToken(token), ...details } });
-  return okOrLocked(license, system, { token, label: licensedTo(license), expires_at: license.expiresAt?.toISOString() ?? null });
+  return okOrLocked(license, system, {
+    token,
+    label: licensedTo(license),
+    expires_at: license.expiresAt?.toISOString() ?? null,
+    ...(await updateInfo(license.product)),
+  });
 }
 
 export async function heartbeat(input: DeviceInput, ip: string): Promise<DeviceReply> {
@@ -140,7 +167,11 @@ export async function heartbeat(input: DeviceInput, ip: string): Promise<DeviceR
     },
   });
   if (verdict) return verdict;
-  return okOrLocked(license, updated, { label: licensedTo(license), expires_at: license.expiresAt?.toISOString() ?? null });
+  return okOrLocked(license, updated, {
+    label: licensedTo(license),
+    expires_at: license.expiresAt?.toISOString() ?? null,
+    ...(await updateInfo(license.product)),
+  });
 }
 
 export async function deactivate(input: DeviceInput, ip: string): Promise<DeviceReply> {

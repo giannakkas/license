@@ -20,6 +20,13 @@ date printed in Help > Licence; ask for a new file to extend it. Setting the
 computer's clock back to before the program last ran locks it until the clock
 is right again.
 
+Updates: when a newer version is published on license.oncue.cy, the toolbar shows
+"Update to x.y.z" within 5 minutes. Click it: the program downloads the new version,
+checks it, replaces MonitoringApp.exe and restarts with the same sources. If your
+administrator requires a version, the update installs by itself. Keep the exe in a
+folder you can write to (Desktop, Documents, a tools folder), not Program Files.
+Licence > Check now asks for an update straight away.
+
 Nothing is installed; settings are kept in
 %APPDATA%\BarpiMonitor\config.json and a log in %APPDATA%\BarpiMonitor\monitor.log.
 

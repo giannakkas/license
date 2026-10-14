@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (QApplication, QComboBox, QDockWidget, QFileDialog
                                QMessageBox, QPlainTextEdit, QSlider, QStackedWidget, QToolBar, QWidget)
 
 from . import APP_NAME, __version__, theme
-from .config import Config, Source, guess_name, is_url
+from .config import Config, Source, default_config_path, guess_name, is_url
 from .dialogs import VIDEO_FILTER, SettingsDialog, SourceDialog
 from .license import USABLE, LicenseClient
 from .license_ui import ActivationDialog, LicenseDialog, LicenseMonitor, LockScreen, import_license_file
@@ -45,6 +45,8 @@ class MainWindow(QMainWindow):
         self.license_client = license_client
         self.license_monitor: LicenseMonitor | None = None
         self._locked = False
+        self._offer: dict | None = None
+        self._auto_update_tried: set[str] = set()
         self.tiles: list[SourceTile] = []
         self._selected: SourceTile | None = None
         self._maximized: SourceTile | None = None
@@ -158,6 +160,10 @@ class MainWindow(QMainWindow):
         if self.license_client is not None:
             act("Licence", self._open_license, tip="Licence status, change key, deactivate this computer")
         act("Help", self._about, "F1")
+        # Shown only when the platform offers a newer build (see on_update_offer).
+        self.act_update = act("Update available", self._open_update, tip="Install the newer version")
+        self.act_update.setVisible(False)
+        self._update_button = tb.widgetForAction(self.act_update)
         self._toolbars = [tb]
 
         self.addToolBarBreak()
@@ -559,6 +565,53 @@ class MainWindow(QMainWindow):
             self.license_monitor.publish()
         else:
             self.on_license_status(*self.license_client.effective_status())
+
+    # ------------------------------------------------------------------ updates
+
+    def on_update_offer(self, offer: dict | None) -> None:
+        """Called by the LicenseMonitor when the platform's newest build changes. Required updates start by themselves."""
+        self._offer = offer
+        if not offer:
+            self.act_update.setVisible(False)
+            return
+        required = bool(offer.get("required"))
+        self.act_update.setText(f"Update required: {offer['version']}" if required else f"Update to {offer['version']}")
+        self.act_update.setToolTip(f"Version {offer['version']} is available (this is {__version__})"
+                                   + (f": {offer['notes']}" if offer.get("notes") else ""))
+        self.act_update.setVisible(True)
+        if self._update_button is not None:
+            color = theme.RED if required else theme.GREEN
+            self._update_button.setStyleSheet(f"color: {color}; font-weight: bold;")
+        self._log_line(f"version {offer['version']} is available" + (" (required)" if required else ""),
+                       theme.RED if required else theme.GREEN)
+        if required and offer["version"] not in self._auto_update_tried:
+            self._auto_update_tried.add(offer["version"])
+            QTimer.singleShot(1500, self._open_update)
+
+    def _open_update(self) -> None:
+        if not self._offer or self.license_client is None:
+            return
+        from .update_ui import UpdateDialog
+        UpdateDialog(self._offer, self.license_client, self._restart_into_update, parent=self).exec()
+
+    def _restart_into_update(self, mode: str, new_file) -> None:
+        """Save everything, start the new build (or the helper that finishes the swap), and quit."""
+        from .updater import current_exe, finish_after_exit, relaunch
+        exe = current_exe()
+        if exe is None:
+            return
+        args = [] if self.config_path == default_config_path() else ["--config", str(self.config_path)]
+        self.close()   # closeEvent saves the config and geometry and stops the players
+        try:
+            if mode == "swapped":
+                relaunch(exe, args)
+            else:
+                finish_after_exit(new_file, exe, args)
+        except OSError as exc:
+            log.error("could not start the updated program: %s", exc)
+            QMessageBox.warning(None, APP_NAME, f"The update is installed but the program could not restart itself "
+                                                f"({exc}). Start {exe.name} again.")
+        QApplication.quit()
 
     def _open_license(self) -> None:
         if self.license_client is None:

@@ -9,7 +9,7 @@ from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (QApplication, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QFrame, QHBoxLayout,
                                QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget)
 
-from . import APP_NAME, theme
+from . import APP_NAME, __version__, theme
 from .license import (MODE_OFFLINE, NEEDS_ACTIVATION, LicenseClient, LicenseError, ServerUnreachable, Status,
                       normalise_key)
 
@@ -157,7 +157,8 @@ class LicenseDialog(QDialog):
         self.setWindowTitle("Licence")
         self.setMinimumWidth(520)
         self.form = QFormLayout()
-        self.labels = {name: QLabel() for name in ("status", "mode", "label", "key", "machine", "server", "last", "expires")}
+        self.labels = {name: QLabel() for name in ("status", "mode", "label", "key", "machine", "server", "last", "expires",
+                                                   "version")}
         for lab in self.labels.values():
             lab.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.form.addRow("Status", self.labels["status"])
@@ -168,8 +169,10 @@ class LicenseDialog(QDialog):
         self.form.addRow("Platform", self.labels["server"])
         self.form.addRow("Last check", self.labels["last"])
         self.form.addRow("Expires", self.labels["expires"])
+        self.form.addRow("Version", self.labels["version"])
         row = QHBoxLayout()
         check = QPushButton("Check now")
+        check.setToolTip("Ask the platform for the licence status and for a newer version")
         check.clicked.connect(self._check_now)
         change = QPushButton("Change key…")
         change.clicked.connect(self._change_key)
@@ -209,6 +212,13 @@ class LicenseDialog(QDialog):
             last += f"  (failed: {st.last_error})"
         self.labels["last"].setText(last)
         self.labels["expires"].setText(st.expires_at or "never")
+        offer = self.client.update_offer()
+        if offer:
+            note = "required by your administrator" if offer["required"] else "use Update in the toolbar"
+            self.labels["version"].setText(f'{__version__}  ·  <span style="color:{theme.GREEN}; font-weight:bold">'
+                                           f'{offer["version"]} available</span> ({note})')
+        else:
+            self.labels["version"].setText(f"{__version__} (latest)" if st.update_version else __version__)
 
     def _check_now(self) -> None:
         QApplication.setOverrideCursor(Qt.WaitCursor)
@@ -304,6 +314,7 @@ class LicenseMonitor(QObject):
     """Checks in with the platform in the background and announces status changes."""
 
     status_changed = Signal(str, str)   # status, message
+    update_offered = Signal(object)     # the offer dict from LicenseClient.update_offer(), or None
 
     def __init__(self, client: LicenseClient, parent=None):
         super().__init__(parent)
@@ -311,6 +322,7 @@ class LicenseMonitor(QObject):
         self._stop = threading.Event()
         self._wake = threading.Event()
         self._last: tuple[str, str] | None = None
+        self._last_offer: tuple | None = ()
         self._thread = threading.Thread(target=self._loop, name="licence", daemon=True)
         self._timer = QTimer(self)
         self._timer.setInterval(60_000)
@@ -335,6 +347,11 @@ class LicenseMonitor(QObject):
         if current != self._last:
             self._last = current
             self.status_changed.emit(*current)
+        offer = self.client.update_offer()
+        key = (offer["version"], offer["required"]) if offer else None
+        if key != self._last_offer:
+            self._last_offer = key
+            self.update_offered.emit(offer)
 
     def _loop(self) -> None:
         next_check = 0.0

@@ -37,7 +37,9 @@ Computer ids are a hash of the Windows machine id and host name, not personal da
 | `POST /api/v1/deactivate` | `key, machine_id, token` | 200 `ok` |
 | `GET /api/v1/public-key` | — | the RSA public key programs embed to verify offline files (`n`, `e`, `pem`) |
 
-Every answer carries `status`, `message` and `interval` (seconds until the next check-in).
+Every answer carries `status`, `message` and `interval` (seconds until the next check-in). Successful activate and
+heartbeat answers also carry `latest` (the newest build of the program's software: `version`, `url`, `sha256`,
+`size`, `filename`, `notes`, or `null`) and `min_version` (see *Updates* below).
 
 ### Admin API
 
@@ -54,7 +56,7 @@ answer JSON instead of redirecting. All need the session cookie from `POST /api/
 | `GET /download/:slug` · `GET /download/:slug/:release` | **public**: the latest build of a software, or one specific build |
 | `POST /api/admin/systems/:id` | `action = lock \| unlock \| remove`, `message` |
 | `POST /api/admin/products` | `name`, `slug` (optional, derived from the name), `notes` |
-| `POST /api/admin/products/:id` | `action = update \| delete` (delete takes its licences, computers and builds with it), `name, slug, notes` |
+| `POST /api/admin/products/:id` | `action = update \| delete` (delete takes its licences, computers and builds with it), `name, slug, notes, minVersion` |
 | `POST /api/admin/customers` | `name`, `email`, `phone`, `notes` |
 | `POST /api/admin/customers/:id` | `action = update \| delete` (delete takes its licences and computers with it), `name, email, phone, notes` |
 
@@ -85,6 +87,17 @@ Put the private key in `LICENSE_FILE_PRIVATE_KEY` (Railway variable) and the pub
 in each program (`PUBLIC_KEY_N` in `monitor/barpi_monitor/license.py`); `/api/v1/public-key`
 publishes it too. Losing or rotating the private key invalidates every issued file and needs
 new program builds, so keep it safe.
+
+## Updates
+
+The programs update themselves from the Downloads panel. Every check-in answer names the
+newest build of the program's software; a copy that is older shows **Update to x.y.z** in its
+toolbar, and one click downloads the build, refuses it unless its size and SHA-256 match,
+swaps the exe and restarts it with the same sources. Set **Required minimum version** on the
+software's page to make older copies install the newest build by themselves at their next
+check-in (within 5 minutes); a failed download never stops them, they retry at the next check.
+The licence page shows, per computer, when a newer build is waiting. Computers on an offline
+licence file update only when they get a connection.
 
 ## Downloads
 

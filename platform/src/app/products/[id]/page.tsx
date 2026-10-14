@@ -52,6 +52,7 @@ export default async function ProductPage({
         <Link href="/products" className="muted text-sm hover:underline">← Software</Link>
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <h1 className="text-xl font-bold">{product.name}</h1>
+          {product.minVersion && <span className="rounded border border-[#7a5a1a] bg-[#3a2a10] px-2 py-0.5 text-xs text-[#fcd34d]">{`minimum version ${product.minVersion}`}</span>}
           <code className="mono rounded border border-[#2a2f3a] bg-[#1e222b] px-2 py-0.5 text-sm select-all">{product.slug}</code>
         </div>
         <p className="muted text-sm">
@@ -104,7 +105,11 @@ export default async function ProductPage({
           </table>
         )}
         <div className="border-t border-[#2a2f3a] p-4">
-          <h3 className="mb-2 text-sm font-bold">Upload a build</h3>
+          <h3 className="mb-1 text-sm font-bold">Upload a build</h3>
+          <p className="muted mb-2 text-xs">
+            The newest upload is offered to every copy of {product.name} at its next check-in (within 5 minutes): the program shows
+            &quot;Update to …&quot; and installs it with one click{product.minVersion ? `, or by itself if it is older than ${product.minVersion}` : ""}.
+          </p>
           <ReleaseUpload productId={product.id} />
         </div>
       </section>
@@ -128,6 +133,11 @@ export default async function ProductPage({
               Slug
               <input name="slug" defaultValue={product.slug} required pattern="[a-z0-9][a-z0-9-]+" />
               <span className="muted text-xs">Programs built with the old slug are refused after a change.</span>
+            </label>
+            <label className="flex flex-col gap-1">
+              Required minimum version
+              <input name="minVersion" defaultValue={product.minVersion ?? ""} placeholder="e.g. 1.4.0 (empty: updates are optional)" pattern="\d+(\.\d+){0,3}" />
+              <span className="muted text-xs">Copies older than this install the latest build by themselves at their next check-in.</span>
             </label>
             <label className="flex flex-col gap-1">Notes<textarea name="notes" rows={3} defaultValue={product.notes ?? ""} /></label>
             <div className="flex items-center justify-between">

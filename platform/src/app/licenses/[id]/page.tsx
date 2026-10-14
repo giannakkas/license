@@ -11,6 +11,7 @@ import { fmtDate, fmtDay, timeAgo } from "@/lib/format";
 import { addMonths } from "@/lib/forms";
 import { isOnline } from "@/lib/licensing";
 import { offlineFilesConfigured } from "@/lib/offline";
+import { isNewer } from "@/lib/catalog";
 import { effectiveStatus } from "@/lib/stats";
 
 export const dynamic = "force-dynamic";
@@ -28,7 +29,7 @@ export default async function LicensePage({
     prisma.license.findUnique({
       where: { id },
       include: {
-        product: { select: { id: true, name: true, slug: true } },
+        product: { select: { id: true, name: true, slug: true, minVersion: true, releases: { orderBy: { createdAt: "desc" }, take: 1, select: { version: true } } } },
         customer: { select: { id: true, name: true } },
         systems: { orderBy: { lastSeenAt: "desc" } },
         events: { orderBy: { createdAt: "desc" }, take: 50 },
@@ -40,6 +41,7 @@ export default async function LicensePage({
   if (!license) notFound();
   const action = `/api/admin/licenses/${license.id}`;
   const back = `/licenses/${license.id}`;
+  const latestVersion = license.product.releases[0]?.version ?? null;
   const filesOn = offlineFilesConfigured();
   const defaultFileExpiry = fmtDay(license.expiresAt && license.expiresAt > new Date() ? license.expiresAt : addMonths(new Date(), 12));
 
@@ -168,7 +170,14 @@ export default async function LicensePage({
                       <div className="muted text-xs">{s.os ?? ""}{s.ip ? ` · ${s.ip}` : ""}</div>
                     </td>
                     <td className="mono text-xs">{s.machineId}</td>
-                    <td>{s.appVersion ?? "—"}</td>
+                    <td>
+                      {s.appVersion ?? "—"}
+                      {latestVersion && s.appVersion && isNewer(latestVersion, s.appVersion) && (
+                        <div className={`text-xs ${license.product.minVersion && isNewer(license.product.minVersion, s.appVersion) ? "text-[#fca5a5]" : "text-[#fcd34d]"}`}>
+                          {`${latestVersion} available`}
+                        </div>
+                      )}
+                    </td>
                     <td>
                       {s.mode === "offline" ? (
                         <>

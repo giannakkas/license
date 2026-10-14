@@ -112,8 +112,9 @@ def main(argv: list[str] | None = None) -> int:
     for item in args.sources:
         config.sources.append(Source(name=guess_name(item), url=item, loop=not is_url(item)))
 
-    from .license import NEEDS_ACTIVATION, LicenseClient, license_path, server_override
+    from .license import NEEDS_ACTIVATION, LicenseClient, is_newer, license_path, server_override
     from .license_ui import ActivationDialog, LicenseMonitor
+    from .updater import cleanup, current_exe
     from .window import MainWindow
 
     def excepthook(exc_type, exc, tb):
@@ -123,6 +124,19 @@ def main(argv: list[str] | None = None) -> int:
     # Licence: a key is needed before the first start; afterwards the platform is asked
     # every few minutes and can lock this computer.
     client = LicenseClient(license_path(cfg_path.parent), server=args.license_server or server_override())
+    exe = current_exe()
+    if exe is not None:
+        cleanup(exe)
+    updated_note = ""
+    if client.state.installed_update:
+        if is_newer(client.state.installed_update, __version__):
+            log.warning("the build installed as %s reports version %s; it will not be offered again",
+                        client.state.installed_update, __version__)
+        else:
+            updated_note = f"updated to {__version__}"
+            log.info("%s", updated_note)
+            client.state.installed_update = ""
+            client.save()
     status, message = client.effective_status()
     log.info("licence status at start: %s %s", status, message)
     if status in NEEDS_ACTIVATION:
@@ -132,8 +146,16 @@ def main(argv: list[str] | None = None) -> int:
     win = MainWindow(config, cfg_path, license_client=client)
     monitor = LicenseMonitor(client, parent=win)
     monitor.status_changed.connect(win.on_license_status)
+    monitor.update_offered.connect(win.on_update_offer)
     win.license_monitor = monitor
     win.on_license_status(*client.effective_status())
+    if updated_note:
+        from . import theme
+        win._log_line(updated_note, theme.GREEN)
+    if exe is not None:
+        # The previous build may still have been closing a moment ago: tidy up again shortly.
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(20_000, lambda: cleanup(exe))
     monitor.start()
     win.show()
     return app.exec()
