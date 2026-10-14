@@ -1,0 +1,12 @@
+# Monitoring Application build outputs
+/monitor/vendor/
+/monitor/build/
+/monitor/dist/
+/monitor/build-wine/
+__pycache__/
+*.pyc
+
+# The platform keeps its own .gitignore (node_modules, .next, .env, data/)
+
+.DS_Store
+Thumbs.db

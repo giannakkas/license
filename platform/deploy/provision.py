@@ -6,7 +6,7 @@
 
 What it does, step by step (each step is idempotent, so it can be re-run):
   1. finds the Railway project (default: the "licensing" project) and its production environment
-  2. creates a service named "player" from github.com/giannakkas/barpi, branch main, if missing
+  2. creates a service named "player" from github.com/giannakkas/license, branch main, if missing
   3. sets its root directory to platform/, the start command and the health check
   4. sets the variables: DATABASE_URL (the project's own Postgres),
      PLATFORM_ADMIN_PASSWORD, PLATFORM_SESSION_SECRET, LICENSE_SIGNING_SECRET, PUBLIC_URL
@@ -21,7 +21,7 @@ Environment:
   PLATFORM_ADMIN_PASSWORD  the password for the platform's admin screens
   PLATFORM_SESSION_SECRET  optional; generated and kept on Railway if absent
   LICENSE_SIGNING_SECRET   optional; generated and kept on Railway if absent
-  RAILWAY_PROJECT_ID       optional (default: barpi's project id)
+  RAILWAY_PROJECT_ID       optional (default: the licensing project's id)
   RAILWAY_ENVIRONMENT      optional (default: production)
   DOMAIN                   optional (default: license.oncue.cy)
 
@@ -41,7 +41,7 @@ from urllib import error, request
 RAILWAY_API = "https://backboard.railway.com/graphql/v2"
 CF_API = "https://api.cloudflare.com/client/v4"
 DEFAULT_PROJECT = "8fefc010-a153-4a9a-8a4c-be4df23a00a4"   # the "licensing" project
-REPO = "giannakkas/barpi"
+REPO = "giannakkas/license"
 BRANCH = "main"
 SERVICE = "player"
 

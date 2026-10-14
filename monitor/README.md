@@ -1,24 +1,25 @@
-# Barpi Monitor ("Monitoring Application")
+# Monitoring Application (MonitoringApp.exe)
 
 A Windows desktop program that plays several video sources at once for monitoring
 and shows **live audio level meters** for each one. It is a small multiviewer: streams
 or files in a grid, one of them audible, every one metered, with SILENCE and NO SIGNAL
 alarms.
 
-It lives in this repository because the newsroom asked for it, but it is independent
-of the Barpi web app: Python, Qt and libmpv, packaged as a single `MonitoringApp.exe`. The window is titled "Monitoring Application".
+Python, Qt and libmpv, packaged as a single `MonitoringApp.exe`, licensed through the
+platform in `../platform` (https://license.oncue.cy). The Python package is still called
+`barpi_monitor`, after the project it started in.
 
-![Barpi Monitor](assets/screenshot.png)
+![Monitoring Application](assets/screenshot.png)
 
 ## Download
 
-Every push that touches `monitor/` builds the exe on GitHub Actions and self-tests it.
+Customers download the latest build from the licensing platform:
+https://license.oncue.cy/download/monitoring-application (upload new builds on the
+software's page there).
+
+Every push that touches `monitor/` also builds the exe on GitHub Actions and self-tests it.
 Builds from `main` (and manual runs of the workflow) are published as the
-**`monitor-latest`** pre-release:
-
-https://github.com/giannakkas/barpi/releases/tag/monitor-latest
-
-Builds from other branches are kept as a workflow artifact instead: open the run under
+**`monitor-latest`** pre-release of this repository. Builds from other branches are kept as a workflow artifact instead: open the run under
 *Actions → Build Monitoring Application (Windows exe)* and download `MonitoringApp-<version>-win64`.
 
 Take `MonitoringApp.exe` (or the zip, which adds a short README). It needs nothing

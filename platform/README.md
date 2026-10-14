@@ -8,8 +8,8 @@ programs check in every few minutes; a lock takes effect within one check-in. Th
 **Monitoring Application** (`../monitor`) is the first software; any other program uses the
 same device API with its own slug.
 
-Stack: the same as the newsroom app next door (Next.js 16, Prisma 7 on PostgreSQL,
-Tailwind 4), one admin password, HMAC-signed session cookie.
+Stack: Next.js 16, Prisma 7 on PostgreSQL, Tailwind 4; one admin password, HMAC-signed
+session cookie.
 
 ## How a program is licensed
 
@@ -111,7 +111,7 @@ To point a program at it: `MonitoringApp.exe --license-server http://localhost:3
 
 | Variable | Purpose |
 | --- | --- |
-| `DATABASE_URL` | PostgreSQL. On Railway: `${{Postgres.DATABASE_URL}}?schema=licensing`, its own schema in the barpi database |
+| `DATABASE_URL` | PostgreSQL. On Railway: `${{Postgres.DATABASE_URL}}?schema=licensing`, the `licensing` project's own Postgres |
 | `PLATFORM_ADMIN_PASSWORD` | The admin password |
 | `PLATFORM_SESSION_SECRET` | Signs the admin cookie (16+ chars) |
 | `LICENSE_SIGNING_SECRET` | Signs activation tokens (16+ chars); changing it makes every computer activate again |
@@ -123,8 +123,8 @@ To point a program at it: `MonitoringApp.exe --license-server http://localhost:3
 ## Deployment (Railway + Cloudflare)
 
 The platform runs in its **own Railway project, `licensing`** (id `8fefc010-a153-4a9a-8a4c-be4df23a00a4`),
-separate from the newsroom app: a `Postgres` service and a `player` service built from this
-repository with root directory `/platform`, start command `npm run start:prod` (applies the
+a `Postgres` service and a `player` service built from this repository
+(`giannakkas/license`, branch `main`) with root directory `/platform`, start command `npm run start:prod` (applies the
 migrations, then starts Next) and health check `/api/health`. Railway no longer accepts
 `railway.json` config-as-code, so those three settings live on the service itself; the
 `railway.json` here is kept only as documentation of them.
@@ -136,8 +136,8 @@ Custom domain `license.oncue.cy` → Cloudflare zone `oncue.cy`, two records, bo
 | CNAME | `license` | the target Railway shows for the domain (`*.up.railway.app`) | DNS only (grey cloud) |
 | TXT | `_railway-verify.license` | the `railway-verify=…` token Railway shows | n/a |
 
-The certificate issues a few minutes after both records are live (see the main README's
-"Cloudflare DNS" section for why the TXT matters). The target and token change if the
+The certificate issues a few minutes after both records are live; without the TXT Railway
+cannot prove the domain is yours and keeps serving its generic certificate. The target and token change if the
 service is ever recreated: `railway domain status license.oncue.cy --service player`.
 
 **Scripted** (Railway API token + Cloudflare token with Zone.DNS edit on `oncue.cy`):
@@ -157,10 +157,8 @@ railway add --service player --variables 'DATABASE_URL=${{Postgres.DATABASE_URL}
   --variables PLATFORM_SESSION_SECRET=… --variables LICENSE_SIGNING_SECRET=…
 railway api --var serviceId=… --var environmentId=… --var input='{"rootDirectory":"/platform","startCommand":"npm run start:prod","healthcheckPath":"/api/health"}' \
   'mutation($serviceId: String!, $environmentId: String!, $input: ServiceInstanceUpdateInput!) { serviceInstanceUpdate(serviceId: $serviceId, environmentId: $environmentId, input: $input) }'
-railway service source connect --repo giannakkas/barpi --branch main --service player
+railway service source connect --repo giannakkas/license --branch main --service player
 railway domain license.oncue.cy --service player      # prints the CNAME target and the TXT token
 ```
 
-The service deploys from branch `claude/barpi-monitor` until that branch is merged; then
-switch it to `main` (`railway service source connect … --branch main`). Variables: see
-"Environment" above; do **not** set `NODE_ENV`.
+Every push to `main` deploys. Variables: see "Environment" above; do **not** set `NODE_ENV`.
