@@ -48,6 +48,19 @@ if (-not (Test-Path vendor\libmpv-2.dll)) {
     Remove-Item vendor\mpv-dev.7z
 }
 if (-not (Test-Path vendor\libmpv-2.dll)) { throw "vendor\libmpv-2.dll is still missing" }
+if (-not (Test-Path vendor\vulkan-1.dll)) {
+    # The official Khronos/LunarG loader, bundled for PCs whose graphics driver installs none.
+    Write-Host "Downloading the Vulkan loader"
+    $zip = Join-Path $env:TEMP "vulkan-runtime-components.zip"
+    $dir = Join-Path $env:TEMP "vulkan-runtime-components"
+    Invoke-WebRequest -MaximumRedirection 10 "https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-runtime-components.zip" -OutFile $zip
+    if (Test-Path $dir) { Remove-Item -Recurse -Force $dir }
+    Expand-Archive $zip -DestinationPath $dir
+    $dll = Get-ChildItem $dir -Recurse -Filter vulkan-1.dll | Where-Object { $_.Directory.Name -eq "x64" } | Select-Object -First 1
+    Copy-Item $dll.FullName vendor\vulkan-1.dll
+    Get-ChildItem $dir -Recurse -Filter VulkanRT-License.txt | Select-Object -First 1 | ForEach-Object { Copy-Item $_.FullName vendor\VULKAN-LICENSE.txt }
+    $dll.Directory.Parent.Name | Set-Content vendor\VULKAN-VERSION.txt
+}
 
 python -m pytest tests -q
 pyinstaller MonitoringApp.spec --noconfirm --clean

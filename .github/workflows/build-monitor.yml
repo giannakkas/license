@@ -60,6 +60,22 @@ jobs:
           Remove-Item monitor/vendor/mpv-dev.7z
           Get-Item monitor/vendor/libmpv-2.dll | Select-Object Name, Length
 
+      - name: Fetch the Vulkan loader
+        run: |
+          if (-not (Test-Path monitor/vendor/vulkan-1.dll)) {
+              # The official Khronos/LunarG loader, bundled for PCs whose graphics driver installs none.
+              Write-Host "Downloading the Vulkan loader"
+              $zip = Join-Path $env:TEMP "vulkan-runtime-components.zip"
+              $dir = Join-Path $env:TEMP "vulkan-runtime-components"
+              Invoke-WebRequest -MaximumRedirection 10 "https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-runtime-components.zip" -OutFile $zip
+              if (Test-Path $dir) { Remove-Item -Recurse -Force $dir }
+              Expand-Archive $zip -DestinationPath $dir
+              $dll = Get-ChildItem $dir -Recurse -Filter vulkan-1.dll | Where-Object { $_.Directory.Name -eq "x64" } | Select-Object -First 1
+              Copy-Item $dll.FullName monitor/vendor/vulkan-1.dll
+              Get-ChildItem $dir -Recurse -Filter VulkanRT-License.txt | Select-Object -First 1 | ForEach-Object { Copy-Item $_.FullName monitor/vendor/VULKAN-LICENSE.txt }
+              $dll.Directory.Parent.Name | Set-Content monitor/vendor/VULKAN-VERSION.txt
+          }
+
       - name: Unit tests
         run: python -m pytest monitor/tests -q
 

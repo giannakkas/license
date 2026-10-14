@@ -10,19 +10,25 @@ from pathlib import Path
 
 spec_dir = Path(SPECPATH).resolve()
 vendor_dll = spec_dir / "vendor" / "libmpv-2.dll"
+vulkan_dll = spec_dir / "vendor" / "vulkan-1.dll"
 
 binaries = []
 if sys.platform == "win32":
-    if not vendor_dll.exists():
-        raise SystemExit(f"{vendor_dll} is missing: run monitor/build.ps1 (it downloads libmpv) "
-                         "or copy libmpv-2.dll there by hand")
+    for dll in (vendor_dll, vulkan_dll):
+        if not dll.exists():
+            raise SystemExit(f"{dll} is missing: run monitor/build.ps1 or monitor/build-wine.sh, which download it")
     binaries.append((str(vendor_dll), "."))
+    # Only loaded on PCs whose graphics driver installs no Vulkan loader (see main.provide_vulkan_loader);
+    # kept in its own folder so it never shadows the system's loader.
+    binaries.append((str(vulkan_dll), "vulkan-fallback"))
 
 datas = [
     (str(spec_dir / "assets" / "icon.png"), "assets"),
     (str(spec_dir / "assets" / "icon.ico"), "assets"),
     (str(spec_dir / "assets" / "logo.png"), "assets"),
 ]
+if (spec_dir / "vendor" / "VULKAN-LICENSE.txt").exists():
+    datas.append((str(spec_dir / "vendor" / "VULKAN-LICENSE.txt"), "vulkan-fallback"))
 
 a = Analysis(
     [str(spec_dir / "run_monitor.py")],

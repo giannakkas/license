@@ -85,6 +85,11 @@ def run_self_test(log_path: Path | None = None) -> int:
         check("Qt renders the level meter", False, repr(exc))
         app = None
 
+    # 3a. vulkan-1.dll is available (the system's, or the bundled fallback) so libmpv can load
+    if sys.platform == "win32":
+        from .main import VULKAN_LOADER
+        check("Vulkan loader available", VULKAN_LOADER in ("system", "bundled"), VULKAN_LOADER)
+
     # 3. libmpv loads and meters a known signal through the real player class
     try:
         from .config import Settings, Source

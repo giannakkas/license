@@ -56,6 +56,23 @@ if [ ! -f "$HERE/vendor/libmpv-2.dll" ]; then
     basename "${MPV_ARCHIVE_URL%/download}" > "$HERE/vendor/LIBMPV-VERSION.txt"
 fi
 
+echo "== Vulkan loader (bundled for PCs whose graphics driver installs none)"
+if [ ! -f "$HERE/vendor/vulkan-1.dll" ]; then
+    curl -sSL -o "$WORK/dl/vulkan-runtime.zip" "https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-runtime-components.zip"
+    python3 -I - "$WORK/dl/vulkan-runtime.zip" "$HERE/vendor" <<'PY'
+import pathlib, sys, zipfile
+z = zipfile.ZipFile(sys.argv[1])
+out = pathlib.Path(sys.argv[2])
+names = z.namelist()
+dll = next(n for n in names if n.endswith("/x64/vulkan-1.dll"))
+lic = next(n for n in names if n.endswith("VulkanRT-License.txt"))
+(out / "vulkan-1.dll").write_bytes(z.read(dll))
+(out / "VULKAN-LICENSE.txt").write_bytes(z.read(lic))
+(out / "VULKAN-VERSION.txt").write_text(dll.split("/")[0] + " (sdk.lunarg.com vulkan-runtime-components.zip)\n")
+print("   " + dll)
+PY
+fi
+
 echo "== ICU stub for the Wine prefix"
 if [ ! -f "$WINEPREFIX/drive_c/windows/system32/icuuc.dll" ]; then
     # Qt6Core.dll imports the ICU that ships inside Windows 10/11; list those imports with the

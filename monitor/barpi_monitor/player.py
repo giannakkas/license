@@ -15,6 +15,8 @@ mean a frozen picture, a dark mean means black, and a failing grab means no vide
 """
 from __future__ import annotations
 
+import sys
+
 import logging
 import threading
 import time
@@ -121,12 +123,35 @@ class MpvUnavailable(RuntimeError):
     pass
 
 
+def _libmpv_load_error() -> str:
+    """python-mpv hides why Windows refused libmpv-2.dll; load it ourselves to get the reason."""
+    if sys.platform != "win32":
+        return ""
+    import ctypes
+    from .main import base_dir
+    # Ask Windows directly: the packaged program's ctypes replaces the error with a generic one.
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.LoadLibraryExW.restype = ctypes.c_void_p
+    kernel32.LoadLibraryExW.argtypes = [ctypes.c_wchar_p, ctypes.c_void_p, ctypes.c_uint32]
+    search_default_dirs_and_own_dir = 0x00001000 | 0x00000100
+    for path in (base_dir() / "libmpv-2.dll", base_dir() / "vendor" / "libmpv-2.dll"):
+        if not path.exists():
+            continue
+        if kernel32.LoadLibraryExW(str(path), None, search_default_dirs_and_own_dir):
+            return ""
+        code = ctypes.get_last_error()
+        hint = " (a DLL that libmpv-2.dll needs is missing on this computer)" if code == 126 else ""
+        return f"Windows error {code}: {ctypes.FormatError(code).strip()}{hint}"
+    return "libmpv-2.dll is not in the program."
+
+
 def import_mpv():
     """Import python-mpv, turning its DLL-not-found error into something we can show."""
     try:
         import mpv  # noqa: WPS433 (deferred so the DLL search path is set up first)
     except OSError as exc:
-        raise MpvUnavailable(str(exc)) from exc
+        reason = _libmpv_load_error()
+        raise MpvUnavailable(f"{exc} {reason}".strip()) from exc
     return mpv
 
 

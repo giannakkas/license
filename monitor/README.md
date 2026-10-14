@@ -61,6 +61,12 @@ running exe cannot be renamed, a small `.cmd` helper finishes the swap after exi
 whose label on the platform is higher than the version it reports is installed once and not
 offered again, so a mislabelled upload cannot cause an update loop. `MonitoringApp.exe --update`
 does the same without the window (for IT scripts) and exits; the next start runs the new version.
+**Vulkan loader.** libmpv-2.dll imports `vulkan-1.dll`, which graphics drivers install but
+Windows itself does not; without it libmpv cannot load ("ctypes.CDLL could not load it"). The
+exe bundles the official Khronos/LunarG loader in `vulkan-fallback/` and loads it by full path
+only when System32 has none (`main.provide_vulkan_loader`), so PCs with basic graphics, virtual
+machines and remote desktops start too. The self-test reports which loader was used.
+
 `MONITORINGAPP_DUMP_STACKS=<seconds>` makes the program write every thread's stack to
 `stacks.txt` in its settings folder, for diagnosing a hang.
 

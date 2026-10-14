@@ -21,8 +21,62 @@ def base_dir() -> Path:
     return Path(frozen) if frozen else Path(__file__).resolve().parent.parent
 
 
+# How vulkan-1.dll is provided: "system", "bundled", "missing", or "n/a" off Windows. Set by prepare_dll_path().
+VULKAN_LOADER = "n/a"
+
+
+def _system_has_vulkan() -> bool:
+    """True when Windows can load vulkan-1.dll from System32, where graphics drivers install it."""
+    import ctypes
+    load_library_search_system32 = 0x00000800
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.LoadLibraryExW.restype = ctypes.c_void_p
+    kernel32.LoadLibraryExW.argtypes = [ctypes.c_wchar_p, ctypes.c_void_p, ctypes.c_uint32]
+    kernel32.FreeLibrary.argtypes = [ctypes.c_void_p]
+    handle = kernel32.LoadLibraryExW("vulkan-1.dll", None, load_library_search_system32)
+    if not handle:
+        return False
+    kernel32.FreeLibrary(handle)
+    return True
+
+
+def provide_vulkan_loader() -> str:
+    """libmpv-2.dll imports vulkan-1.dll, which graphics drivers install but Windows itself does not.
+
+    PCs with basic or older graphics, virtual machines and remote desktops may have none, and
+    then libmpv cannot load at all. The official Khronos loader is bundled for those PCs only:
+    it is loaded by full path before libmpv, so libmpv's import binds to it. A PC with its own
+    loader keeps using that one.
+    """
+    if sys.platform != "win32":
+        return "n/a"
+    try:
+        if _system_has_vulkan():
+            return "system"
+    except Exception as exc:  # noqa: BLE001 - the probe must never stop the program starting
+        log.warning("could not probe for the system Vulkan loader: %s", exc)
+    import ctypes
+    for folder in (base_dir() / "vulkan-fallback", base_dir() / "vendor"):
+        dll = folder / "vulkan-1.dll"
+        if not dll.exists():
+            continue
+        try:
+            ctypes.WinDLL(str(dll))
+        except OSError as exc:
+            log.warning("the bundled Vulkan loader %s could not be loaded: %s", dll, exc)
+            continue
+        if hasattr(os, "add_dll_directory"):
+            try:
+                os.add_dll_directory(str(folder))
+            except OSError:
+                pass
+        return "bundled"
+    return "missing"
+
+
 def prepare_dll_path() -> None:
     """Make libmpv findable: next to the exe, in the bundle, or in monitor/vendor when run from source."""
+    global VULKAN_LOADER
     candidates = [base_dir(), base_dir() / "vendor", Path(sys.executable).resolve().parent]
     for c in candidates:
         if not c.is_dir():
@@ -33,6 +87,9 @@ def prepare_dll_path() -> None:
                 os.add_dll_directory(str(c))
             except OSError:
                 pass
+    VULKAN_LOADER = provide_vulkan_loader()
+    if VULKAN_LOADER != "n/a":
+        log.info("Vulkan loader: %s", VULKAN_LOADER)
 
 
 def setup_logging(log_dir: Path) -> None:
@@ -162,9 +219,13 @@ def main(argv: list[str] | None = None) -> int:
     try:
         import_mpv()
     except MpvUnavailable as exc:
+        log.error("libmpv could not be loaded: %s", exc)
+        hint = ("This computer has no Vulkan graphics loader (vulkan-1.dll). Update the graphics driver, or "
+                "install the Vulkan Runtime from https://vulkan.lunarg.com, then start the program again."
+                if VULKAN_LOADER == "missing" else
+                "Download the program again from the licensing platform and replace MonitoringApp.exe.")
         QMessageBox.critical(None, APP_NAME,
-                             "The playback engine (libmpv-2.dll) could not be loaded.\n\n"
-                             "Put libmpv-2.dll next to MonitoringApp.exe, or reinstall.\n\n"
+                             f"The playback engine (libmpv-2.dll) could not be loaded.\n\n{hint}\n\n"
                              f"Details: {exc}")
         return 2
 
