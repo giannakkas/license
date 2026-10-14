@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { SESSION_COOKIE, verifySessionToken } from "@/lib/session";
@@ -8,7 +9,7 @@ export async function Header() {
     <header className="border-b border-[#2a2f3a] bg-[#171a21]">
       <div className="mx-auto flex max-w-6xl items-center gap-6 px-4 py-3">
         <Link href="/" className="flex items-center gap-3">
-          <span className="inline-block h-6 w-6 rounded bg-[#3b82f6]" aria-hidden />
+          <Image src="/logo.png" alt="" width={37} height={28} priority unoptimized />
           <span className="font-bold">OnCue Licensing</span>
           <span className="muted text-sm">license.oncue.cy</span>
         </Link>

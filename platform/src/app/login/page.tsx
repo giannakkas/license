@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 export default async function LoginPage({
   searchParams,
 }: {
@@ -7,6 +9,7 @@ export default async function LoginPage({
   return (
     <div className="mx-auto mt-16 max-w-sm">
       <div className="panel p-6">
+        <Image src="/logo.png" alt="OnCue Licensing" width={64} height={48} priority unoptimized className="mb-4" />
         <h1 className="mb-1 text-lg font-bold">Sign in</h1>
         <p className="muted mb-4 text-sm">Serial keys, customers and remote lock for your software.</p>
         <form method="post" action="/api/auth/login" className="flex flex-col gap-3">
