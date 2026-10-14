@@ -59,7 +59,10 @@ next to the exe, discards it unless size and SHA-256 match, moves the running ex
 `PYINSTALLER_RESET_ENVIRONMENT=1`. Below `min_version` the update starts by itself. If the
 running exe cannot be renamed, a small `.cmd` helper finishes the swap after exit. A build
 whose label on the platform is higher than the version it reports is installed once and not
-offered again, so a mislabelled upload cannot cause an update loop.
+offered again, so a mislabelled upload cannot cause an update loop. `MonitoringApp.exe --update`
+does the same without the window (for IT scripts) and exits; the next start runs the new version.
+`MONITORINGAPP_DUMP_STACKS=<seconds>` makes the program write every thread's stack to
+`stacks.txt` in its settings folder, for diagnosing a hang.
 
 Computers without internet import an *offline licence file* (`.lic`) instead of a key: the
 platform signs a payload (key, software slug, customer, computer id, expiry) with its RSA-2048

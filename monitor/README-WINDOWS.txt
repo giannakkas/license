@@ -25,7 +25,9 @@ Updates: when a newer version is published on license.oncue.cy, the toolbar show
 checks it, replaces MonitoringApp.exe and restarts with the same sources. If your
 administrator requires a version, the update installs by itself. Keep the exe in a
 folder you can write to (Desktop, Documents, a tools folder), not Program Files.
-Licence > Check now asks for an update straight away.
+Licence > Check now asks for an update straight away. For IT scripts:
+      MonitoringApp.exe --update
+installs the newest version without opening the window (the next start runs it).
 
 Nothing is installed; settings are kept in
 %APPDATA%\BarpiMonitor\config.json and a log in %APPDATA%\BarpiMonitor\monitor.log.

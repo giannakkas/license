@@ -56,8 +56,59 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--self-test", action="store_true", help="check libmpv, metering and Qt, then exit")
     parser.add_argument("--license-server", help="licensing platform URL (default: https://license.oncue.cy, "
                                                  "or BARPI_LICENSE_SERVER)")
+    parser.add_argument("--update", action="store_true",
+                        help="install the newest version offered by the licensing platform without opening the "
+                             "window, then exit (for IT scripts); the next start runs the new version")
     parser.add_argument("--version", action="store_true")
     return parser.parse_args(argv)
+
+
+def update_from_command_line(cfg_path: Path, server: str | None) -> int:
+    """``--update``: check in, then download, verify and install the newest build. 0 = done or up to date."""
+    from .license import LicenseClient, ServerUnreachable, license_path, server_override
+    from .updater import UpdateError, cleanup, current_exe, download, install, staged_path
+
+    client = LicenseClient(license_path(cfg_path.parent), server=server or server_override())
+    exe = current_exe()
+    if exe is None:
+        log.error("--update works on the packaged MonitoringApp.exe only")
+        return 2
+    cleanup(exe)
+    if not client.state.token:
+        log.error("--update: this computer is not activated yet")
+        return 3
+    try:
+        client.check()
+    except ServerUnreachable as exc:  # check() records outages itself; this is belt and braces
+        log.error("--update: the licensing platform cannot be reached (%s)", exc)
+        return 4
+    offer = client.update_offer()
+    if offer is None:
+        st = client.state
+        if st.installed_update and st.installed_update == st.update_version:
+            log.warning("--update: the build offered as %s was installed already but reports version %s; "
+                        "it is not installed again (check the version label on the platform)",
+                        st.update_version, __version__)
+        else:
+            log.info("--update: %s is the newest version available", __version__)
+        return 0
+    try:
+        new_file = download(offer["url"], staged_path(exe), offer["sha256"], int(offer.get("size") or 0))
+        client.state.installed_update = offer["version"]
+        client.save()
+        mode = install(new_file, exe)
+    except UpdateError as exc:
+        client.state.installed_update = ""
+        client.save()
+        log.error("--update to %s failed: %s", offer["version"], exc)
+        return 5
+    if mode != "swapped":
+        from .updater import finish_after_exit
+        finish_after_exit(new_file, exe, [])
+        log.info("--update: version %s will be in place once this process exits", offer["version"])
+    else:
+        log.info("--update: version %s installed; the next start runs it", offer["version"])
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -73,12 +124,21 @@ def main(argv: list[str] | None = None) -> int:
 
     cfg_path = Path(args.config).expanduser() if args.config else default_config_path()
     setup_logging(cfg_path.parent)
+    dump_every = os.environ.get("MONITORINGAPP_DUMP_STACKS", "")
+    if dump_every.isdigit() and int(dump_every) > 0:
+        # Support aid: write every thread's stack to stacks.txt in the settings folder every N seconds.
+        import faulthandler
+        faulthandler.dump_traceback_later(int(dump_every), repeat=True,
+                                          file=open(cfg_path.parent / "stacks.txt", "w", encoding="utf-8"))  # noqa: SIM115
     prepare_dll_path()
     log.info("%s %s starting; config %s", APP_NAME, __version__, cfg_path)
 
     if args.self_test:
         from .selftest import run_self_test
         return run_self_test(cfg_path.parent / "self-test.log")
+
+    if args.update:
+        return update_from_command_line(cfg_path, args.license_server)
 
     from PySide6.QtGui import QIcon
     from PySide6.QtWidgets import QApplication, QMessageBox

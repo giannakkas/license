@@ -69,6 +69,11 @@ def apply_dark_title_bar(widget: QWidget) -> None:
     """
     if sys.platform != "win32":
         return
+    from PySide6.QtGui import QGuiApplication
+    if QGuiApplication.platformName() != "windows":
+        # Offscreen/minimal platforms (self-test, headless runs) have no real window handle;
+        # handing DWM a made-up one can block on another process's window.
+        return
     try:
         import ctypes
         hwnd = ctypes.c_void_p(int(widget.winId()))

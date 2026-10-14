@@ -68,9 +68,12 @@ def download(url: str, dest: Path, sha256: str, size: int = 0, progress=None, op
         raise UpdateError(f"Cannot write in {dest.parent} ({exc.strerror or exc}). Move the program to a folder "
                           "you can write to, or download the update from the platform by hand.") from exc
     req = request.Request(url, headers={"User-Agent": f"monitoring-application/{__version__}"})
+    log.info("downloading %s", url)
+    next_log = 10 * 1024 * 1024
     try:
         with out, (opener or request.urlopen)(req, timeout=DOWNLOAD_TIMEOUT_S) as resp:
             total = int(resp.headers.get("Content-Length") or size or 0)
+            log.info("download answered HTTP %s, %s bytes", getattr(resp, "status", "?"), total or "unknown")
             while True:
                 chunk = resp.read(CHUNK)
                 if not chunk:
@@ -78,6 +81,9 @@ def download(url: str, dest: Path, sha256: str, size: int = 0, progress=None, op
                 out.write(chunk)
                 digest.update(chunk)
                 got += len(chunk)
+                if got >= next_log:
+                    log.info("downloaded %d of %d bytes", got, total)
+                    next_log += 10 * 1024 * 1024
                 if progress is not None:
                     progress(got, total)
     except error.HTTPError as exc:
@@ -93,6 +99,7 @@ def download(url: str, dest: Path, sha256: str, size: int = 0, progress=None, op
         _remove(part)
         raise UpdateError("The downloaded file does not match the platform's checksum, so it was discarded.")
     os.replace(part, dest)
+    log.info("download complete and verified (%d bytes)", got)
     return dest
 
 
