@@ -4,7 +4,8 @@ The program is tied to a licence key on the licensing platform (license.oncue.cy
 start the operator enters the key; the platform records this machine against it and hands
 back an activation token. From then on the program checks in every few minutes and the
 platform can answer *locked* (the operator sees a lock screen and playback stops), *revoked*
-or *expired*. If the platform cannot be reached the last answer stays valid for a grace
+or *expired*. Between check-ins it keeps one request open to the platform (``wait_for_change``),
+which answers the moment the licence or this computer changes, so a lock shows within seconds. If the platform cannot be reached the last answer stays valid for a grace
 period, after which the program locks itself until it can check in again.
 
 Computers without internet use an *offline licence file* instead: the platform issues a
@@ -28,6 +29,7 @@ import platform
 import re
 import socket
 import sys
+import threading
 import time
 import uuid
 from dataclasses import asdict, dataclass, field, fields
@@ -47,6 +49,7 @@ PRODUCT = "monitoring-application"
 DEFAULT_INTERVAL_S = 300          # check-in period unless the server says otherwise
 OFFLINE_GRACE_S = 72 * 3600       # how long the last good answer stays valid without a server
 HTTP_TIMEOUT_S = 12
+WAIT_TIMEOUT_S = 45               # /api/v1/wait answers within 25 s; the rest is for a slow network
 
 MODE_ONLINE = "online"            # activated with a key, checked with the platform
 MODE_OFFLINE = "offline"          # activated with a signed licence file
@@ -285,6 +288,8 @@ class LicenseClient:
             self.state.machine_id = machine_id()
         self._post = post
         self._saved_mark = self.state.clock_mark
+        # The periodic check-in, the watcher and the "check now" button can run at the same time.
+        self._lock = threading.RLock()
 
     # ----------------------------------------------------------------- queries
 
@@ -319,6 +324,11 @@ class LicenseClient:
 
     def usable(self) -> bool:
         return self.effective_status()[0] in USABLE
+
+    def can_wait(self) -> bool:
+        """Whether there is an activation to wait on: not before activating, not after a revoke."""
+        st = self.state
+        return bool(st.key and st.token) and st.status in (Status.ACTIVE, Status.LOCKED)
 
     def update_offer(self, current: str = __version__) -> dict | None:
         """The newer build to offer, or None. ``required`` when this version is below the minimum."""
@@ -416,6 +426,10 @@ class LicenseClient:
 
     def check(self) -> LicenseState:
         """One check-in. Never raises for network trouble: that is recorded and aged by the grace rule."""
+        with self._lock:
+            return self._check()
+
+    def _check(self) -> LicenseState:
         st = self.state
         if not st.key or not st.token:
             st.status = Status.UNLICENSED
@@ -446,6 +460,20 @@ class LicenseClient:
             st.last_error = f"unexpected answer (HTTP {code})"
         self.save()
         return st
+
+    def wait_for_change(self) -> bool:
+        """Hold a request open until the platform has news for this computer (about 25 s at most).
+
+        True: the licence or this computer changed on the platform (locked, unlocked, revoked,
+        removed), so check in now. False: nothing changed. Network trouble, or a platform without
+        this endpoint, raises ServerUnreachable.
+        """
+        st = self.state
+        payload = {"key": st.key, "machine_id": st.machine_id, "token": st.token, "status": st.status, "product": PRODUCT}
+        code, body = self._post(f"{st.server}/api/v1/wait", payload, timeout=WAIT_TIMEOUT_S)
+        if code != 200:
+            raise ServerUnreachable(f"wait: HTTP {code}")
+        return bool(body.get("changed"))
 
     def deactivate(self) -> None:
         st = self.state
@@ -498,7 +526,8 @@ class LicenseClient:
 
     def save(self) -> None:
         try:
-            self.state.save(self.path)
+            with self._lock:
+                self.state.save(self.path)
         except OSError as exc:
             log.warning("could not save licence state: %s", exc)
 

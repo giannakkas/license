@@ -9,7 +9,7 @@ import { ReleaseUpload } from "@/components/release-upload";
 import { VersionSummary } from "@/components/version-summary";
 import { loadComputers, versionSummary } from "@/lib/computers";
 import { prisma } from "@/lib/db";
-import { fmtDate, fmtDay } from "@/lib/format";
+import { count, fmtDate, fmtDay } from "@/lib/format";
 import { fmtSize } from "@/lib/releases";
 import { summarise } from "@/lib/stats";
 
@@ -105,7 +105,13 @@ export default async function ProductPage({
                   <td>{r.downloads}</td>
                   <td className="text-right">
                     <form method="post" action={`/api/admin/releases/${r.id}`}>
-                      <ConfirmButton value="delete" className="btn btn-danger btn-small" message={`Delete build ${r.version} (${r.filename})?`}>
+                      <ConfirmButton
+                        value="delete"
+                        className="btn btn-danger btn-small"
+                        title={`Delete build ${r.version}?`}
+                        confirmLabel="Delete build"
+                        message={`${r.filename} is removed from the platform and can no longer be downloaded. Computers already running it keep working.`}
+                      >
                         Delete
                       </ConfirmButton>
                     </form>
@@ -177,9 +183,12 @@ export default async function ProductPage({
           {product.releases.length} uploaded build(s). Programs on those licences stop at their next check-in. This cannot be undone.
         </p>
         <form method="post" action={action}>
-          <ConfirmButton value="delete"
+          <ConfirmButton
+            value="delete"
             className="btn btn-danger"
-            message={`Delete ${product.name} with its ${s.licences} licence(s), ${s.computers} computer(s) and ${product.releases.length} build(s)? This cannot be undone.`}
+            title={`Delete ${product.name}?`}
+            confirmLabel="Delete software"
+            message={`Its ${count(s.licences, "licence")}, ${count(s.computers, "computer")} and ${count(product.releases.length, "build")} are deleted with it, and the programs on those licences stop. This cannot be undone.`}
           >
             Delete software
           </ConfirmButton>

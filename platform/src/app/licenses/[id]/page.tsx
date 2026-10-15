@@ -7,11 +7,12 @@ import { ErrorBox } from "@/components/error-box";
 import { ExtendForm } from "@/components/extend-form";
 import { NoticeBox } from "@/components/notice-box";
 import { prisma } from "@/lib/db";
-import { fmtDate, fmtDay, timeAgo } from "@/lib/format";
+import { count, fmtDate, fmtDay, timeAgo } from "@/lib/format";
 import { addMonths } from "@/lib/forms";
 import { isOnline } from "@/lib/licensing";
 import { offlineFilesConfigured } from "@/lib/offline";
 import { isNewer } from "@/lib/catalog";
+import { lockArrives } from "@/lib/computers";
 import { effectiveStatus } from "@/lib/stats";
 
 export const dynamic = "force-dynamic";
@@ -77,7 +78,7 @@ export default async function LicensePage({
           <h2 className="mb-3 font-bold">Whole licence</h2>
           <p className="muted mb-3 text-sm">
             {`These act on every computer on this licence (${license.systems.length}). `}
-            <b>Lock</b> stops them all within one check-in and keeps their registrations; <b>Revoke</b> ends the licence
+            <b>Lock</b> stops them all and keeps their registrations; <b>Revoke</b> ends the licence
             and the programs ask for a new key. To lock a single computer, use <b>Lock</b> in its row under Computers.
           </p>
           <form method="post" action={action} className="flex flex-col gap-2">
@@ -87,7 +88,14 @@ export default async function LicensePage({
                 <ConfirmButton
                   className="btn btn-danger"
                   value="lock"
-                  message={`Lock the whole licence? All ${license.systems.length} computer(s) on it show the lock screen within 5 minutes. To lock one computer, use Lock in its row instead.`}
+                  title="Lock the whole licence?"
+                  confirmLabel={`Lock ${count(license.systems.length, "computer")}`}
+                  message={
+                    <>
+                      <p>{`All ${count(license.systems.length, "computer")} on this licence show the lock screen and stop playback. Their registrations are kept, and Unlock licence brings them back.`}</p>
+                      <p>To lock just one computer, cancel and use Lock in its row.</p>
+                    </>
+                  }
                 >
                   {`Lock licence (all ${license.systems.length} computers)`}
                 </ConfirmButton>
@@ -97,7 +105,9 @@ export default async function LicensePage({
                 <ConfirmButton
                   className="btn btn-danger"
                   value="revoke"
-                  message={`Revoke this licence? All ${license.systems.length} computer(s) stop and must enter a new key.`}
+                  title="Revoke this licence?"
+                  confirmLabel="Revoke licence"
+                  message={`The key stops working: all ${count(license.systems.length, "computer")} on it stop and ask for a licence key. Prefer Lock if you want them back as they are.`}
                 >
                   Revoke
                 </ConfirmButton>
@@ -222,14 +232,26 @@ export default async function LicensePage({
                           {s.status === "active" ? (
                             <>
                               <input name="message" placeholder="message (optional)" className="w-40 text-xs" />
-                              <button className="btn btn-danger btn-small" name="action" value="lock">Lock</button>
+                              <ConfirmButton
+                                value="lock"
+                                title={`Lock ${s.hostname ?? s.machineId}?`}
+                                confirmLabel="Lock computer"
+                                message={`The lock screen appears on this computer ${lockArrives({ ...s, online, product: license.product })} and playback stops. The other computers on the licence keep working. You can unlock it at any time.`}
+                              >
+                                Lock
+                              </ConfirmButton>
                             </>
                           ) : (
                             <button className="btn btn-primary btn-small" name="action" value="unlock">Unlock</button>
                           )}
                         </form>
                         <form method="post" action={`/api/admin/systems/${s.id}`}>
-                          <ConfirmButton value="remove" message={`Remove ${s.hostname ?? s.machineId}? It will have to activate again and the seat becomes free.`}>
+                          <ConfirmButton
+                            value="remove"
+                            title={`Remove ${s.hostname ?? s.machineId}?`}
+                            confirmLabel="Remove computer"
+                            message="It comes off this licence and its seat becomes free. The program on it stops and asks for the licence key again."
+                          >
                             Remove
                           </ConfirmButton>
                         </form>
@@ -267,7 +289,13 @@ export default async function LicensePage({
         <h2 className="mb-2 font-bold text-[#fca5a5]">Delete</h2>
         <p className="muted mb-3 text-sm">Deletes the licence and its computers. Prefer Revoke, which keeps the history.</p>
         <form method="post" action={action}>
-          <ConfirmButton className="btn btn-danger" value="delete" message={`Delete licence ${license.key} and its ${license.systems.length} computer(s)? This cannot be undone.`}>
+          <ConfirmButton
+            className="btn btn-danger"
+            value="delete"
+            title="Delete this licence?"
+            confirmLabel="Delete licence"
+            message={`Licence ${license.key} and its ${count(license.systems.length, "computer")} are deleted for good. This cannot be undone.`}
+          >
             Delete licence
           </ConfirmButton>
         </form>

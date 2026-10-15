@@ -9,6 +9,7 @@
 import { DEFAULT_PRODUCT_SLUG, licensedTo } from "@/lib/catalog";
 import { prisma } from "@/lib/db";
 import { hashToken, makeToken, normaliseKey, tokenMatches } from "@/lib/keys";
+import { nextChange } from "@/lib/live";
 
 export const DEFAULT_PRODUCT = DEFAULT_PRODUCT_SLUG;
 
@@ -25,6 +26,8 @@ export type DeviceInput = {
   os?: unknown;
   version?: unknown;
   product?: unknown;
+  /** /api/v1/wait: the status the program got from its last check-in. */
+  status?: unknown;
 };
 
 function str(v: unknown, max = 120): string {
@@ -177,6 +180,41 @@ export async function heartbeat(input: DeviceInput, ip: string): Promise<DeviceR
     expires_at: license.expiresAt?.toISOString() ?? null,
     ...(await updateInfo(license.product)),
   });
+}
+
+/** How long /api/v1/wait holds a request open before answering "nothing changed". */
+export const WAIT_SECONDS = 25;
+/** How often a waiting request re-reads the database even when nothing was announced. */
+const WAIT_RECHECK_MS = 10_000;
+
+/** The status a check-in would answer right now, without recording anything. */
+async function currentStatus(key: string, machineId: string, token: unknown): Promise<string> {
+  const license = await prisma.license.findUnique({ where: { key }, include: LICENSE_INCLUDE });
+  if (!license) return "invalid";
+  const system = await prisma.system.findUnique({ where: { licenseId_machineId: { licenseId: license.id, machineId } } });
+  if (!system || !tokenMatches(token, system.tokenHash)) return "unknown";
+  return String((licenseVerdict(license) ?? okOrLocked(license, system, {})).body.status);
+}
+
+/**
+ * Long poll for the program: answers as soon as the status a check-in would give differs from
+ * `status`, the one the program last got, or after WAIT_SECONDS with `changed: false`. The
+ * program then checks in as usual, so this only decides *when*; the heartbeat stays the one
+ * place that decides *what* and records it.
+ */
+export async function waitForChange(input: DeviceInput, signal: AbortSignal): Promise<DeviceReply> {
+  const key = normaliseKey(input.key);
+  const machineId = str(input.machine_id, 64);
+  if (!key || !machineId) return reply(400, "invalid", "A licence key and a computer id are required.");
+  const known = str(input.status, 20);
+  const deadline = Date.now() + WAIT_SECONDS * 1000;
+  for (;;) {
+    const status = await currentStatus(key, machineId, input.token);
+    if (status !== known) return { code: 200, body: { changed: true, status } };
+    const left = deadline - Date.now();
+    if (left <= 0 || signal.aborted) return { code: 200, body: { changed: false, status } };
+    await nextChange(Math.min(left, WAIT_RECHECK_MS), signal);
+  }
 }
 
 export async function deactivate(input: DeviceInput, ip: string): Promise<DeviceReply> {

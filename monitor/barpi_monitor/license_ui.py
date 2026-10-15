@@ -1,6 +1,7 @@
 """Licence screens: activation, the licence status dialog, the lock screen and the check-in thread."""
 from __future__ import annotations
 
+import logging
 import threading
 import time
 
@@ -24,6 +25,10 @@ LOCK_TITLES = {
 }
 
 FILE_FILTER = "Licence files (*.lic);;All files (*)"
+
+log = logging.getLogger(__name__)
+
+WATCH_BACKOFF_MAX_S = 300   # the longest pause between attempts to reach the platform for news
 
 
 def import_license_file(client: LicenseClient, parent=None) -> tuple[bool, str]:
@@ -311,7 +316,11 @@ class LockScreen(QWidget):
 
 
 class LicenseMonitor(QObject):
-    """Checks in with the platform in the background and announces status changes."""
+    """Checks in with the platform in the background and announces status changes.
+
+    Two threads: one checks in every few minutes; the other waits on the platform for news, so
+    a lock or unlock from the dashboard shows within seconds instead of at the next check-in.
+    """
 
     status_changed = Signal(str, str)   # status, message
     update_offered = Signal(object)     # the offer dict from LicenseClient.update_offer(), or None
@@ -324,12 +333,14 @@ class LicenseMonitor(QObject):
         self._last: tuple[str, str] | None = None
         self._last_offer: tuple | None = ()
         self._thread = threading.Thread(target=self._loop, name="licence", daemon=True)
+        self._watcher = threading.Thread(target=self._watch, name="licence-watch", daemon=True)
         self._timer = QTimer(self)
         self._timer.setInterval(60_000)
         self._timer.timeout.connect(self.publish)   # ages the offline grace even without a check-in
 
     def start(self) -> None:
         self._thread.start()
+        self._watcher.start()
         self._timer.start()
 
     def stop(self) -> None:
@@ -353,16 +364,55 @@ class LicenseMonitor(QObject):
             self._last_offer = key
             self.update_offered.emit(offer)
 
+    def _check(self) -> None:
+        if self.client.state.status not in NEEDS_ACTIVATION or self.client.state.token:
+            self.client.check()
+        self.publish()
+
     def _loop(self) -> None:
         next_check = 0.0
         while not self._stop.is_set():
             now = time.time()
             if now >= next_check:
-                if self.client.state.status not in NEEDS_ACTIVATION or self.client.state.token:
-                    self.client.check()
+                self._check()
                 next_check = time.time() + max(30, self.client.state.interval_s)
-                self.publish()
             self._wake.wait(timeout=min(30.0, max(1.0, next_check - time.time())))
             if self._wake.is_set():
                 self._wake.clear()
                 next_check = 0.0
+
+    def _watch(self) -> None:
+        backoff = 0.0
+        unsettled = 0
+        while not self._stop.is_set():
+            if not self.client.can_wait():
+                self._stop.wait(30)
+                continue
+            sent = self.client.state.status
+            started = time.time()
+            try:
+                changed = self.client.wait_for_change()
+            except ServerUnreachable as exc:
+                # Offline, a deploy on the platform, or a platform without the endpoint: try again later.
+                backoff = min(WATCH_BACKOFF_MAX_S, backoff * 2 or 5.0)
+                log.debug("licence watch: %s; next try in %.0f s", exc, backoff)
+                self._stop.wait(backoff)
+                continue
+            except Exception:  # noqa: BLE001 - the watcher must never die; the periodic check-in still runs
+                log.exception("licence watch failed")
+                self._stop.wait(60)
+                continue
+            backoff = 0.0
+            if not changed:
+                # The platform holds an unchanged answer for ~25 s; one that comes back at once (a proxy
+                # in the way, say) must not turn this into a busy loop.
+                if time.time() - started < 2:
+                    self._stop.wait(15)
+                continue
+            log.info("licence: the platform reports a change; checking in now")
+            self._check()
+            # A check-in that leaves the status as it was makes the next wait answer at once.
+            # Once may be a quick lock-and-unlock; twice in a row means it will not settle: slow down.
+            unsettled = unsettled + 1 if self.client.state.status == sent else 0
+            if unsettled >= 2:
+                self._stop.wait(30)

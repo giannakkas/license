@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { announceChange } from "@/lib/live";
 import { field } from "@/lib/forms";
 import { clientIp, done, readBody } from "@/lib/request";
 
@@ -33,6 +34,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     case "delete": {
       const computers = await prisma.system.count({ where: { license: { customerId: id } } });
       await prisma.customer.delete({ where: { id } });
+      announceChange();
       await prisma.event.create({
         data: { kind: "customer", detail: `${customer.name} deleted with ${customer._count.licenses} licence(s) and ${computers} computer(s)`, ip },
       });

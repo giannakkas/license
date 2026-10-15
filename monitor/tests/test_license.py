@@ -261,3 +261,34 @@ def test_legacy_server_is_moved_to_the_new_platform(tmp_path):
     assert LicenseState.load(path).server == L.DEFAULT_SERVER == "https://license.oncue.cy"
     path.write_text(json.dumps({"server": "https://platform.test"}))
     assert LicenseState.load(path).server == "https://platform.test", "a custom server is kept"
+
+
+def test_wait_for_change_sends_known_status(client):
+    c, server = client
+    c.activate(KEY)
+    server.answer = (200, {"changed": False, "status": "active"})
+    assert c.can_wait() and c.wait_for_change() is False
+    kind, payload = server.calls[-1]
+    assert kind == "wait" and payload["status"] == "active" and payload["token"] == "tok"
+    server.answer = (200, {"changed": True, "status": "locked"})
+    assert c.wait_for_change() is True
+
+
+def test_wait_for_change_errors_are_outages(client):
+    c, server = client
+    c.activate(KEY)
+    server.answer = (400, {"status": "invalid"})
+    with pytest.raises(ServerUnreachable):
+        c.wait_for_change()
+    server.down = True
+    with pytest.raises(ServerUnreachable):
+        c.wait_for_change()
+
+
+def test_cannot_wait_without_activation_or_after_revoke(client):
+    c, server = client
+    assert not c.can_wait()
+    c.activate(KEY)
+    server.answer = (403, {"status": "revoked", "message": "gone"})
+    c.check()
+    assert not c.can_wait()

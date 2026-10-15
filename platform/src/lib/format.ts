@@ -19,3 +19,8 @@ export function fmtDay(date: Date | null | undefined): string {
 export function isExpired(date: Date | null | undefined): boolean {
   return !!date && date.getTime() < Date.now();
 }
+
+/** "1 computer", "3 computers". */
+export function count(n: number, word: string, plural = `${word}s`): string {
+  return `${n} ${n === 1 ? word : plural}`;
+}

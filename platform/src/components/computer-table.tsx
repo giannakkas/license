@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Badge } from "@/components/badge";
 import { ConfirmButton } from "@/components/confirm-button";
 import type { ComputerRow } from "@/lib/computers";
-import { versionState } from "@/lib/computers";
+import { lockArrives, versionState } from "@/lib/computers";
 import { fmtDay, timeAgo } from "@/lib/format";
 import { isOnline } from "@/lib/licensing";
 
@@ -87,7 +87,9 @@ export function ComputerTable({
                   ) : (
                     <ConfirmButton
                       value="lock"
-                      message={`Lock ${c.hostname ?? c.machineId} only? Its program shows the lock screen at its next check-in (within 5 minutes). The other computers on the licence keep working.`}
+                      title={`Lock ${c.hostname ?? c.machineId}?`}
+                      confirmLabel="Lock computer"
+                      message={`The lock screen appears on this computer ${lockArrives({ ...c, online, product: c.license.product })} and playback stops. The other computers on the licence keep working. You can unlock it at any time.`}
                     >
                       Lock
                     </ConfirmButton>

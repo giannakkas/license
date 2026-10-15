@@ -1,5 +1,6 @@
 import { SLUG_RE, VERSION_RE, slugify } from "@/lib/catalog";
 import { prisma } from "@/lib/db";
+import { announceChange } from "@/lib/live";
 import { field } from "@/lib/forms";
 import { removeFile } from "@/lib/releases";
 import { clientIp, done, readBody } from "@/lib/request";
@@ -40,6 +41,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       const computers = await prisma.system.count({ where: { license: { productId: id } } });
       for (const r of product.releases) await removeFile(id, r.id, r.filename);
       await prisma.product.delete({ where: { id } });
+      announceChange();
       await prisma.event.create({
         data: {
           kind: "software",

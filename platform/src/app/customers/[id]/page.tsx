@@ -9,7 +9,7 @@ import { ComputerTable } from "@/components/computer-table";
 import { LicenseTable } from "@/components/license-table";
 import { loadComputers, versionSummary } from "@/lib/computers";
 import { prisma } from "@/lib/db";
-import { fmtDate } from "@/lib/format";
+import { count, fmtDate } from "@/lib/format";
 import { summarise } from "@/lib/stats";
 
 export const dynamic = "force-dynamic";
@@ -100,7 +100,13 @@ export default async function CustomerPage({
           licences stop at their next check-in. This cannot be undone.
         </p>
         <form method="post" action={action}>
-          <ConfirmButton value="delete" className="btn btn-danger" message={`Delete ${customer.name} with its ${s.licences} licence(s) and ${s.computers} computer(s)? This cannot be undone.`}>
+          <ConfirmButton
+            value="delete"
+            className="btn btn-danger"
+            title={`Delete ${customer.name}?`}
+            confirmLabel="Delete customer"
+            message={`Its ${count(s.licences, "licence")} and ${count(s.computers, "computer")} are deleted with it, and the programs on those licences stop. This cannot be undone.`}
+          >
             Delete customer
           </ConfirmButton>
         </form>

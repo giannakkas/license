@@ -2,6 +2,7 @@
 import type { SystemGetPayload, SystemWhereInput } from "@/generated/prisma/models";
 import { isNewer, versionParts } from "@/lib/catalog";
 import { prisma } from "@/lib/db";
+import { checkInterval } from "@/lib/licensing";
 
 export const COMPUTER_INCLUDE = {
   license: {
@@ -76,4 +77,15 @@ export function versionSummary(computers: ComputerRow[]): VersionGroup[] {
   return [...groups.values()]
     .map((g) => ({ ...g, versions: g.versions.sort(byVersionDesc) }))
     .sort((a, b) => a.product.name.localeCompare(b.product.name));
+}
+
+/** The first version of each software that waits for news from the platform, so a lock shows within seconds. */
+const INSTANT_LOCK_FROM: Record<string, string> = { "monitoring-application": "1.4.3" };
+
+/** When a lock (or unlock) reaches a computer, for the confirmation text: "within a few seconds", ... */
+export function lockArrives(c: { appVersion: string | null; online: boolean; product: { slug: string } }): string {
+  if (!c.online) return "when it next connects to the platform";
+  const from = INSTANT_LOCK_FROM[c.product.slug];
+  if (from && c.appVersion && !isNewer(from, c.appVersion)) return "within a few seconds";
+  return `at its next check-in, within ${Math.round(checkInterval() / 60)} minutes`;
 }

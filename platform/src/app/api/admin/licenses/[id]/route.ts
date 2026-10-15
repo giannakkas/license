@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { announceChange } from "@/lib/live";
 import { fmtDay } from "@/lib/format";
 import { addMonths, field, parseExpiry, parseSeats } from "@/lib/forms";
 import { issueForSystem, normaliseMachineId, offlineFilesConfigured } from "@/lib/offline";
@@ -49,6 +50,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           expiresAt: expires.date,
         },
       });
+      announceChange();
       const changes = [`seats ${seats}`, `expires ${expires.date ? expires.date.toISOString().slice(0, 10) : "never"}`];
       if (customerId !== license.customerId) changes.push(`customer ${license.customer.name} → ${customer.name}`);
       if (productId !== license.productId) changes.push(`software ${license.product.name} → ${product.name}`);
@@ -67,6 +69,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       if (!next) return fail("Choose how long to extend: 1, 3, 6 or 12 months, or a date");
       await prisma.license.update({ where: { id }, data: { expiresAt: next } });
       const offline = await prisma.system.updateMany({ where: { licenseId: id, mode: "offline" }, data: { offlineExpiresAt: next } });
+      announceChange();
       await prisma.event.create({
         data: { kind: "extended", licenseId: id, detail: `expiry ${license.expiresAt ? fmtDay(license.expiresAt) : "never"} → ${fmtDay(next)}`, ip },
       });
@@ -97,6 +100,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           where: { id: system.id },
           data: { mode: "offline", offlineExpiresAt: expires.date, hostname: hostname ?? system.hostname, lastSeenAt: new Date() },
         });
+        announceChange();
       }
       const file = await issueForSystem(license, system, process.env.PUBLIC_URL || publicOrigin(request));
       const who = hostname ?? machineId;
@@ -111,19 +115,23 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
     case "lock":
       await prisma.license.update({ where: { id }, data: { status: "locked", lockMessage: message || null } });
+      announceChange();
       await prisma.event.create({ data: { kind: "locked", licenseId: id, detail: `licence locked: ${message || "(no message)"}`, ip } });
       return done(request, back);
     case "unlock":
     case "reinstate":
       await prisma.license.update({ where: { id }, data: { status: "active", lockMessage: null } });
+      announceChange();
       await prisma.event.create({ data: { kind: "unlocked", licenseId: id, detail: action === "reinstate" ? "licence reinstated" : "licence unlocked", ip } });
       return done(request, back);
     case "revoke":
       await prisma.license.update({ where: { id }, data: { status: "revoked", lockMessage: message || null } });
+      announceChange();
       await prisma.event.create({ data: { kind: "revoked", licenseId: id, detail: `licence revoked: ${message || "(no message)"}`, ip } });
       return done(request, back);
     case "delete":
       await prisma.license.delete({ where: { id } });
+      announceChange();
       await prisma.event.create({
         data: { kind: "deleted", detail: `licence …${license.key.slice(-5)} (${license.product.name}, ${license.customer.name}) deleted`, ip },
       });

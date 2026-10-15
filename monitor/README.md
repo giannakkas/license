@@ -45,7 +45,9 @@ installed. The exe is not code-signed, so SmartScreen will ask once: *More info 
 The program needs a serial key from the licensing platform in `../platform`
 (https://license.oncue.cy). `barpi_monitor/license.py` activates the key with a hashed
 computer id, stores the activation token in `license.json` next to the config, and checks
-in every few minutes (`LicenseMonitor` in `license_ui.py`). The platform answers *active*
+in every few minutes (`LicenseMonitor` in `license_ui.py`). Between check-ins it holds a
+request open on `/api/v1/wait`, which the platform answers the moment the licence or this
+computer changes, so a lock or unlock from the dashboard shows within seconds. The platform answers *active*
 or *locked* with a message; *revoked*, *expired* and *unknown* send the operator back to the
 activation dialog. While not allowed to run, the window shows a lock screen and every tile
 is stopped. If the platform is unreachable the last answer holds for 72 hours.
