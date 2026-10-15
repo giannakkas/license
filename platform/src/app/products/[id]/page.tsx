@@ -105,8 +105,8 @@ export default async function ProductPage({
                   <td>{r.downloads}</td>
                   <td className="text-right">
                     <form method="post" action={`/api/admin/releases/${r.id}`}>
-                      <ConfirmButton className="btn btn-danger btn-small" message={`Delete build ${r.version} (${r.filename})?`}>
-                        <input type="hidden" name="action" value="delete" />Delete
+                      <ConfirmButton value="delete" className="btn btn-danger btn-small" message={`Delete build ${r.version} (${r.filename})?`}>
+                        Delete
                       </ConfirmButton>
                     </form>
                   </td>
@@ -177,11 +177,11 @@ export default async function ProductPage({
           {product.releases.length} uploaded build(s). Programs on those licences stop at their next check-in. This cannot be undone.
         </p>
         <form method="post" action={action}>
-          <ConfirmButton
+          <ConfirmButton value="delete"
             className="btn btn-danger"
             message={`Delete ${product.name} with its ${s.licences} licence(s), ${s.computers} computer(s) and ${product.releases.length} build(s)? This cannot be undone.`}
           >
-            <input type="hidden" name="action" value="delete" />Delete software
+            Delete software
           </ConfirmButton>
         </form>
       </section>

@@ -64,7 +64,7 @@ export default async function CustomerPage({
           <h2 className="font-bold">{`Computers (${computers.length})`}</h2>
           <div className="min-w-0"><VersionSummary groups={versionSummary(computers)} /></div>
         </div>
-        <ComputerTable computers={computers} showCustomer={false} empty="No computer of this customer has activated yet." />
+        <ComputerTable computers={computers} back={`/customers/${customer.id}`} showCustomer={false} empty="No computer of this customer has activated yet." />
       </section>
 
       <section className="panel">
@@ -100,8 +100,8 @@ export default async function CustomerPage({
           licences stop at their next check-in. This cannot be undone.
         </p>
         <form method="post" action={action}>
-          <ConfirmButton className="btn btn-danger" message={`Delete ${customer.name} with its ${s.licences} licence(s) and ${s.computers} computer(s)? This cannot be undone.`}>
-            <input type="hidden" name="action" value="delete" />Delete customer
+          <ConfirmButton value="delete" className="btn btn-danger" message={`Delete ${customer.name} with its ${s.licences} licence(s) and ${s.computers} computer(s)? This cannot be undone.`}>
+            Delete customer
           </ConfirmButton>
         </form>
       </section>

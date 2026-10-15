@@ -40,6 +40,8 @@ export default async function ComputersPage({ searchParams }: { searchParams: Pr
   const computers = state === "outdated" ? rows.filter((c) => ["outdated", "required"].includes(versionState(c))) : rows;
   const online = computers.filter((c) => isOnline(c.lastSeenAt)).length;
   const filtered = Boolean(customer || product || version || state || q);
+  const query = new URLSearchParams({ ...(customer && { customer }), ...(product && { product }), ...(version && { version }), ...(state && { state }), ...(q && { q }) }).toString();
+  const back = query ? `/computers?${query}` : "/computers";
   const versionList = versions.map((v) => v.appVersion as string).sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
 
   return (
@@ -78,7 +80,7 @@ export default async function ComputersPage({ searchParams }: { searchParams: Pr
             {filtered && <Link href="/computers" className="btn btn-small">Clear</Link>}
           </form>
         </div>
-        <ComputerTable computers={computers} empty={filtered ? "No computers match these filters." : "No computer has activated yet."} />
+        <ComputerTable computers={computers} back={back} empty={filtered ? "No computers match these filters." : "No computer has activated yet."} />
       </section>
     </div>
   );

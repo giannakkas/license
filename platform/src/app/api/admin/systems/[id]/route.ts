@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { clientIp, done, readBody } from "@/lib/request";
+import { clientIp, done, readBody, safePath } from "@/lib/request";
 
 export const runtime = "nodejs";
 
@@ -12,7 +12,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const system = await prisma.system.findUnique({ where: { id } });
   if (!system) return done(request, "/?error=Computer+not+found", { error: "not found" }, 404);
   const ip = clientIp(request);
-  const back = `/licenses/${system.licenseId}`;
+  const back = safePath(body.back, `/licenses/${system.licenseId}`);
   const who = system.hostname ?? system.machineId;
 
   switch (action) {

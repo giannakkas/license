@@ -74,17 +74,34 @@ export default async function LicensePage({
 
       <section className="grid gap-4 md:grid-cols-2">
         <div className="panel p-4">
-          <h2 className="mb-3 font-bold">Lock or revoke</h2>
+          <h2 className="mb-3 font-bold">Whole licence</h2>
           <p className="muted mb-3 text-sm">
-            <b>Lock</b> stops every computer on this licence within one check-in and keeps their registrations;
-            <b> Revoke</b> ends the licence and the programs ask for a new key.
+            {`These act on every computer on this licence (${license.systems.length}). `}
+            <b>Lock</b> stops them all within one check-in and keeps their registrations; <b>Revoke</b> ends the licence
+            and the programs ask for a new key. To lock a single computer, use <b>Lock</b> in its row under Computers.
           </p>
           <form method="post" action={action} className="flex flex-col gap-2">
             <input name="message" placeholder="Message shown on the locked screens (optional)" defaultValue={license.lockMessage ?? ""} />
             <div className="flex flex-wrap gap-2">
-              {license.status === "active" && <button className="btn btn-danger" name="action" value="lock">Lock licence</button>}
+              {license.status === "active" && (
+                <ConfirmButton
+                  className="btn btn-danger"
+                  value="lock"
+                  message={`Lock the whole licence? All ${license.systems.length} computer(s) on it show the lock screen within 5 minutes. To lock one computer, use Lock in its row instead.`}
+                >
+                  {`Lock licence (all ${license.systems.length} computers)`}
+                </ConfirmButton>
+              )}
               {license.status === "locked" && <button className="btn btn-primary" name="action" value="unlock">Unlock licence</button>}
-              {license.status !== "revoked" && <button className="btn btn-danger" name="action" value="revoke">Revoke</button>}
+              {license.status !== "revoked" && (
+                <ConfirmButton
+                  className="btn btn-danger"
+                  value="revoke"
+                  message={`Revoke this licence? All ${license.systems.length} computer(s) stop and must enter a new key.`}
+                >
+                  Revoke
+                </ConfirmButton>
+              )}
               {license.status === "revoked" && <button className="btn btn-primary" name="action" value="reinstate">Reinstate</button>}
             </div>
           </form>
@@ -200,19 +217,23 @@ export default async function LicensePage({
                       {s.status === "locked" && s.lockMessage && <div className="mt-1 text-xs text-[#fca5a5]">{s.lockMessage}</div>}
                     </td>
                     <td>
-                      <form method="post" action={`/api/admin/systems/${s.id}`} className="flex flex-wrap items-center gap-1">
-                        {s.status === "active" ? (
-                          <>
-                            <input name="message" placeholder="message (optional)" className="w-40 text-xs" />
-                            <button className="btn btn-danger btn-small" name="action" value="lock">Lock</button>
-                          </>
-                        ) : (
-                          <button className="btn btn-primary btn-small" name="action" value="unlock">Unlock</button>
-                        )}
-                        <ConfirmButton message={`Remove ${s.hostname ?? s.machineId}? It will have to activate again and the seat becomes free.`}>
-                          <input type="hidden" name="action" value="remove" />Remove
-                        </ConfirmButton>
-                      </form>
+                      <div className="flex flex-wrap items-center gap-1">
+                        <form method="post" action={`/api/admin/systems/${s.id}`} className="flex flex-wrap items-center gap-1">
+                          {s.status === "active" ? (
+                            <>
+                              <input name="message" placeholder="message (optional)" className="w-40 text-xs" />
+                              <button className="btn btn-danger btn-small" name="action" value="lock">Lock</button>
+                            </>
+                          ) : (
+                            <button className="btn btn-primary btn-small" name="action" value="unlock">Unlock</button>
+                          )}
+                        </form>
+                        <form method="post" action={`/api/admin/systems/${s.id}`}>
+                          <ConfirmButton value="remove" message={`Remove ${s.hostname ?? s.machineId}? It will have to activate again and the seat becomes free.`}>
+                            Remove
+                          </ConfirmButton>
+                        </form>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -246,8 +267,8 @@ export default async function LicensePage({
         <h2 className="mb-2 font-bold text-[#fca5a5]">Delete</h2>
         <p className="muted mb-3 text-sm">Deletes the licence and its computers. Prefer Revoke, which keeps the history.</p>
         <form method="post" action={action}>
-          <ConfirmButton className="btn btn-danger" message={`Delete licence ${license.key} and its ${license.systems.length} computer(s)? This cannot be undone.`}>
-            <input type="hidden" name="action" value="delete" />Delete licence
+          <ConfirmButton className="btn btn-danger" value="delete" message={`Delete licence ${license.key} and its ${license.systems.length} computer(s)? This cannot be undone.`}>
+            Delete licence
           </ConfirmButton>
         </form>
       </section>
